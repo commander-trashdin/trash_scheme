@@ -1,19 +1,19 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include "parser.h"
+#include "../scheme-parser/parser.h"
 #include <functional>
+#include <memory>
 #include <sstream>
+#include <string>
 
-class SchemeInterpretor {
+class SchemeInterpreter {
 public:
-    SchemeInterpretor();
+  SchemeInterpreter();
 
-    ~SchemeInterpretor();
+  ~SchemeInterpreter();
 
-    std::shared_ptr<Object> Eval(std::shared_ptr<Object> in);
+  std::shared_ptr<Object> Eval(std::shared_ptr<Object> in);
 
 private:
-    std::shared_ptr<Scope> global_scope_;
+  std::shared_ptr<Scope> global_scope_;
 };

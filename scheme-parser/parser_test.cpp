@@ -1,146 +1,141 @@
-#include <catch.hpp>
-
-#include <sstream>
+#include <gtest/gtest.h>
 #include <random>
+#include <sstream>
 
-#include <parser.h>
+#include "parser.h"
 
-std::shared_ptr<Object> ReadFull(const std::string& str) {
-    std::stringstream ss{str};
-    Tokenizer tokenizer{&ss};
+std::shared_ptr<Object> ReadFull(const std::string &str) {
+  std::stringstream ss{str};
+  Tokenizer tokenizer{&ss};
 
-    auto obj = Read(&tokenizer);
-    REQUIRE(tokenizer.IsEnd());
-    return obj;
+  auto obj = Read(&tokenizer);
+  EXPECT_TRUE(tokenizer.IsEnd());
+  return obj;
 }
 
-TEST_CASE("Read number") {
-    auto node = ReadFull("5");
-    REQUIRE(IsNumber(node));
-    REQUIRE(AsNumber(node)->GetValue() == 5);
+TEST(ReadNumber, PositiveAndNegative) {
+  auto node = ReadFull("5");
+  EXPECT_TRUE(IsNumber(node));
+  EXPECT_EQ(AsNumber(node)->GetValue(), 5);
 
-    node = ReadFull("-5");
-    REQUIRE(IsNumber(node));
-    REQUIRE(AsNumber(node)->GetValue() == -5);
+  node = ReadFull("-5");
+  EXPECT_TRUE(IsNumber(node));
+  EXPECT_EQ(AsNumber(node)->GetValue(), -5);
 }
 
-std::string RandomSymbol(std::default_random_engine* rng) {
-    std::uniform_int_distribution<char> symbol('a', 'z');
-    std::string s;
-    for (int i = 0; i < 5; ++i) {
-        s.push_back(symbol(*rng));
-    }
-    return s;
+std::string RandomSymbol(std::default_random_engine *rng) {
+  std::uniform_int_distribution<char> symbol('a', 'z');
+  std::string s;
+  for (int i = 0; i < 5; ++i) {
+    s.push_back(symbol(*rng));
+  }
+  return s;
 }
 
-TEST_CASE("Read symbol") {
-    SECTION("Plus") {
-        auto node = ReadFull("+");
-        REQUIRE(IsSymbol(node));
-        REQUIRE(AsSymbol(node)->GetName() == "+");
-    }
-
-    SECTION("Random symbol") {
-        std::default_random_engine rng{42};
-        for (int i = 0; i < 10; ++i) {
-            auto name = RandomSymbol(&rng);
-            auto node = ReadFull(name);
-            REQUIRE(IsSymbol(node));
-            REQUIRE(AsSymbol(node)->GetName() == name);
-        }
-    }
+TEST(ReadSymbol, Plus) {
+  auto node = ReadFull("+");
+  EXPECT_TRUE(IsSymbol(node));
+  EXPECT_EQ(AsSymbol(node)->GetName(), "+");
 }
 
-TEST_CASE("Lists") {
-    SECTION("Empty list") {
-        auto null = ReadFull("()");
-        REQUIRE(!null);
-    }
+TEST(ReadSymbol, RandomSymbol) {
+  std::default_random_engine rng{42};
+  for (int i = 0; i < 10; ++i) {
+    auto name = RandomSymbol(&rng);
+    auto node = ReadFull(name);
+    EXPECT_TRUE(IsSymbol(node));
+    EXPECT_EQ(AsSymbol(node)->GetName(), name);
+  }
+}
 
-    SECTION("Pair") {
-        auto pair = ReadFull("(1 . 2)");
-        REQUIRE(IsCell(pair));
+TEST(Lists, EmptyList) {
+  auto null = ReadFull("()");
+  EXPECT_FALSE(null);
+}
 
-        auto first = AsCell(pair)->GetFirst();
-        REQUIRE(IsNumber(first));
-        REQUIRE(AsNumber(first)->GetValue() == 1);
+TEST(Lists, Pair) {
+  auto pair = ReadFull("(1 . 2)");
+  EXPECT_TRUE(IsCell(pair));
 
-        auto second = AsCell(pair)->GetSecond();
-        REQUIRE(second->ID() == Types::numberType);
-        REQUIRE(AsNumber(second)->GetValue() == 2);
-    }
+  auto first = AsCell(pair)->GetFirst();
+  EXPECT_TRUE(IsNumber(first));
+  EXPECT_EQ(AsNumber(first)->GetValue(), 1);
 
-    SECTION("Simple list") {
-        auto list = ReadFull("(1 2)");
-        REQUIRE(IsCell(list));
+  auto second = AsCell(pair)->GetSecond();
+  EXPECT_EQ(second->ID(), Types::numberType);
+  EXPECT_EQ(AsNumber(second)->GetValue(), 2);
+}
 
-        auto first = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(first));
-        REQUIRE(AsNumber(first)->GetValue() == 1);
+TEST(Lists, SimpleList) {
+  auto list = ReadFull("(1 2)");
+  EXPECT_TRUE(IsCell(list));
 
-        list = AsCell(list)->GetSecond();
-        auto second = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(second));
-        REQUIRE(AsNumber(second)->GetValue() == 2);
+  auto first = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(first));
+  EXPECT_EQ(AsNumber(first)->GetValue(), 1);
 
-        REQUIRE(!AsCell(list)->GetSecond());
-    }
+  list = AsCell(list)->GetSecond();
+  auto second = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(second));
+  EXPECT_EQ(AsNumber(second)->GetValue(), 2);
 
-    SECTION("List with operator") {
-        auto list = ReadFull("(+ 1 2)");
-        REQUIRE(IsCell(list));
+  EXPECT_FALSE(AsCell(list)->GetSecond());
+}
 
-        auto first = AsCell(list)->GetFirst();
-        REQUIRE(IsSymbol(first));
-        REQUIRE(AsSymbol(first)->GetName() == "+");
+TEST(Lists, ListWithOperator) {
+  auto list = ReadFull("(+ 1 2)");
+  EXPECT_TRUE(IsCell(list));
 
-        list = AsCell(list)->GetSecond();
-        auto second = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(second));
-        REQUIRE(AsNumber(second)->GetValue() == 1);
+  auto first = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsSymbol(first));
+  EXPECT_EQ(AsSymbol(first)->GetName(), "+");
 
-        list = AsCell(list)->GetSecond();
-        second = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(second));
-        REQUIRE(AsNumber(second)->GetValue() == 2);
+  list = AsCell(list)->GetSecond();
+  auto second = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(second));
+  EXPECT_EQ(AsNumber(second)->GetValue(), 1);
 
-        REQUIRE(!AsCell(list)->GetSecond());
-    }
+  list = AsCell(list)->GetSecond();
+  second = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(second));
+  EXPECT_EQ(AsNumber(second)->GetValue(), 2);
 
-    SECTION("List with funny end") {
-        auto list = ReadFull("(1 2 . 3)");
+  EXPECT_FALSE(AsCell(list)->GetSecond());
+}
 
-        REQUIRE(IsCell(list));
+TEST(Lists, ListWithFunnyEnd) {
+  auto list = ReadFull("(1 2 . 3)");
 
-        auto first = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(first));
-        REQUIRE(AsNumber(first)->GetValue() == 1);
+  EXPECT_TRUE(IsCell(list));
 
-        list = AsCell(list)->GetSecond();
-        auto second = AsCell(list)->GetFirst();
-        REQUIRE(IsNumber(second));
-        REQUIRE(AsNumber(second)->GetValue() == 2);
+  auto first = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(first));
+  EXPECT_EQ(AsNumber(first)->GetValue(), 1);
 
-        auto last = AsCell(list)->GetSecond();
-        REQUIRE(IsNumber(last));
-        REQUIRE(AsNumber(last)->GetValue() == 3);
-    }
+  list = AsCell(list)->GetSecond();
+  auto second = AsCell(list)->GetFirst();
+  EXPECT_TRUE(IsNumber(second));
+  EXPECT_EQ(AsNumber(second)->GetValue(), 2);
 
-    SECTION("Complex lists") {
-        ReadFull("(1 . ())");
-        ReadFull("(1 2 . ())");
-        ReadFull("(1 . (2 . ()))");
-        ReadFull("(1 2 (3 4) (()))");
-        ReadFull("(+ 1 2 (- 3 4))");
-    }
+  auto last = AsCell(list)->GetSecond();
+  EXPECT_TRUE(IsNumber(last));
+  EXPECT_EQ(AsNumber(last)->GetValue(), 3);
+}
 
-    SECTION("Invalid lists") {
-        REQUIRE_THROWS_AS(ReadFull("("), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("(1"), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("(1 ."), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("( ."), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("(1 . ()"), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("(1 . )"), SyntaxError);
-        REQUIRE_THROWS_AS(ReadFull("(1 . 2 3)"), SyntaxError);
-    }
+TEST(Lists, ComplexLists) {
+  ReadFull("(1 . ())");
+  ReadFull("(1 2 . ())");
+  ReadFull("(1 . (2 . ()))");
+  ReadFull("(1 2 (3 4) (()))");
+  ReadFull("(+ 1 2 (- 3 4))");
+}
+
+TEST(Lists, InvalidLists) {
+  EXPECT_THROW(ReadFull("("), SyntaxError);
+  EXPECT_THROW(ReadFull("(1"), SyntaxError);
+  EXPECT_THROW(ReadFull("(1 ."), SyntaxError);
+  EXPECT_THROW(ReadFull("( ."), SyntaxError);
+  EXPECT_THROW(ReadFull("(1 . ()"), SyntaxError);
+  EXPECT_THROW(ReadFull("(1 . )"), SyntaxError);
+  EXPECT_THROW(ReadFull("(1 . 2 3)"), SyntaxError);
 }

@@ -1,9 +1,3 @@
-if (TEST_SOLUTION)
-  include_directories(../private/scheme-tokenizer)
-else()
-  include_directories(../scheme-tokenizer)
-endif()
-
-add_catch(test_scheme_parser
-  parser_test.cpp
-  SOLUTION_SRCS parser.cpp)
+add_library(scheme_parser parser.cpp)
+target_include_directories(scheme_parser PUBLIC ${PROJECT_SOURCE_DIR}/scheme-parser)
+target_link_libraries(scheme_parser scheme_tokenizer)
