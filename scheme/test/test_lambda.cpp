@@ -16,17 +16,14 @@ TEST_F(SchemeTest, SlowSum) {
 }
 
 TEST_F(SchemeTest, LambdaClosure) {
-  ExpectNoError(R"EOF((define x 1))EOF");
-  // R"EOF( is not part of the string. It is syntax for raw string literal in
-  // C++. https://en.cppreference.com/w/cpp/language/string_literal
-  ExpectNoError(R"EOF(
+  ExpectNoError("(define x 1)");
+  ExpectNoError(R"(
             (define range
               (lambda (x)
                 (lambda ()
                   (set! x (+ x 1))
                   x)))
-                        )EOF");
-
+            )");
   ExpectNoError("(define my-range (range 10))");
   ExpectEq("(my-range)", "11");
   ExpectEq("(my-range)", "12");

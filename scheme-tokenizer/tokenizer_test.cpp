@@ -3,146 +3,139 @@
 
 #include <sstream>
 
-TEST("Tokenizer works on simple case") {
+TEST(TokenizerTests, WorksOnSimpleCase) {
   std::stringstream ss{"4+)'."};
   Tokenizer tokenizer{&ss};
 
-  REQUIRE(!tokenizer.IsEnd());
-  // Confused by compilation error? Think harder!
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{4}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{4}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"+"}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"+"}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{BracketToken::CLOSE});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{BracketToken::CLOSE});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{QuoteToken{}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{QuoteToken{}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{DotToken{}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{DotToken{}});
 
   tokenizer.Next();
-  REQUIRE(tokenizer.IsEnd());
+  EXPECT_TRUE(tokenizer.IsEnd());
 }
 
-TEST("Negative numbers") {
+TEST(TokenizerTests, HandlesNegativeNumbers) {
   std::stringstream ss{"-2 - 2"};
   Tokenizer tokenizer{&ss};
 
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{-2}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{-2}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"-"}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"-"}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{2}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{2}});
 }
 
-TEST("Symbol names") {
+TEST(TokenizerTests, HandlesSymbolNames) {
   std::stringstream ss{"foo bar zog-zog?"};
   Tokenizer tokenizer{&ss};
 
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"foo"}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"foo"}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"bar"}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"bar"}});
 
   tokenizer.Next();
-  REQUIRE(!tokenizer.IsEnd());
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"zog-zog?"}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"zog-zog?"}});
 }
 
-TEST("GetToken is not moving") {
+TEST(TokenizerTests, GetTokenIsNotMoving) {
   std::stringstream ss{"1234+4"};
   Tokenizer tokenizer{&ss};
 
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{1234}});
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{1234}});
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{1234}});
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{1234}});
 }
 
-TEST("Tokenizer is streaming") {
+TEST(TokenizerTests, IsStreaming) {
   std::stringstream ss;
   ss << "2 ";
 
   Tokenizer tokenizer{&ss};
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{2}});
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{2}});
 
   ss << "* ";
   tokenizer.Next();
-  REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"*"}});
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"*"}});
 
   ss << "2";
   tokenizer.Next();
-  REQUIRE(tokenizer.GetToken() == Token{ConstantToken{2}});
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{2}});
 }
 
-TEST("Spaces are handled correctly") {
-  SECTION("Just spaces") {
-    std::stringstream ss{"      "};
-    Tokenizer tokenizer{&ss};
+TEST(TokenizerTests, HandlesSpacesCorrectly) {
+  std::stringstream ss{"      "};
+  Tokenizer tokenizer{&ss};
 
-    REQUIRE(tokenizer.IsEnd());
-  }
+  EXPECT_TRUE(tokenizer.IsEnd());
 
-  SECTION("Spaces between tokens") {
-    std::stringstream ss{"  4 +  "};
-    Tokenizer tokenizer{&ss};
+  ss.str("  4 +  ");
+  ss.clear();
+  tokenizer = Tokenizer(&ss);
 
-    REQUIRE(!tokenizer.IsEnd());
-    REQUIRE(tokenizer.GetToken() == Token{ConstantToken{4}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{4}});
 
-    tokenizer.Next();
-    REQUIRE(!tokenizer.IsEnd());
-    REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"+"}});
+  tokenizer.Next();
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"+"}});
 
-    tokenizer.Next();
-    REQUIRE(tokenizer.IsEnd());
-  }
+  tokenizer.Next();
+  EXPECT_TRUE(tokenizer.IsEnd());
 }
 
-TEST("Literal strings are handled correctly") {
-  SECTION("Only EOFs and newlines") {
-    std::string input = R"EOF(
+TEST(TokenizerTests, HandlesLiteralStringsCorrectly) {
+  std::string input = R"EOF(
                                    )EOF";
-    std::stringstream ss{input};
-    Tokenizer tokenizer{&ss};
+  std::stringstream ss{input};
+  Tokenizer tokenizer{&ss};
 
-    REQUIRE(tokenizer.IsEnd());
-  }
+  EXPECT_TRUE(tokenizer.IsEnd());
 
-  SECTION("String with tokens") {
-    std::string input = R"EOF(
+  input = R"EOF(
                             4 +
                             )EOF";
-    std::stringstream ss{input};
-    Tokenizer tokenizer{&ss};
+  ss.str(input);
+  ss.clear();
+  tokenizer = Tokenizer(&ss);
 
-    REQUIRE(!tokenizer.IsEnd());
-    REQUIRE(tokenizer.GetToken() == Token{ConstantToken{4}});
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{ConstantToken{4}});
 
-    tokenizer.Next();
-    REQUIRE(!tokenizer.IsEnd());
-    REQUIRE(tokenizer.GetToken() == Token{SymbolToken{"+"}});
+  tokenizer.Next();
+  EXPECT_FALSE(tokenizer.IsEnd());
+  EXPECT_EQ(tokenizer.GetToken(), Token{SymbolToken{"+"}});
 
-    tokenizer.Next();
-    REQUIRE(tokenizer.IsEnd());
-  }
+  tokenizer.Next();
+  EXPECT_TRUE(tokenizer.IsEnd());
 }
 
-TEST("Empty string handled correctly") {
+TEST(TokenizerTests, HandlesEmptyStringCorrectly) {
   std::stringstream ss;
   Tokenizer tokenizer{&ss};
 
-  REQUIRE(tokenizer.IsEnd());
+  EXPECT_TRUE(tokenizer.IsEnd());
 }

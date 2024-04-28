@@ -3,7 +3,6 @@
 
 TEST_F(SchemeTest, SymbolsAreNotSelfEvaluating) {
   ExpectNameError("x");
-
   ExpectEq("'x", "x");
   ExpectEq("(quote x)", "x");
 }

@@ -1,7 +1,7 @@
 #include "scheme_test.h"
 #include <gtest/gtest.h>
 
-TEST_F(SchemeTest, ListsAreNotSelfEvaliating) {
+TEST_F(SchemeTest, ListsAreNotSelfEvaluating) {
   ExpectRuntimeError("()");
   ExpectRuntimeError("(1)");
   ExpectRuntimeError("(1 2 3)");
