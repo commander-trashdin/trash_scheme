@@ -1,10 +1,8 @@
 #pragma once
 
 #include "../scheme-parser/parser.h"
-#include <functional>
 #include <memory>
 #include <sstream>
-#include <string>
 
 class SchemeInterpreter {
 public:

@@ -40,14 +40,15 @@ SchemeInterpreter::SchemeInterpreter()
   global_scope_->variables_["lambda"] = std::make_shared<Lambda>();
   global_scope_->variables_["define"] = std::make_shared<Define>();
   global_scope_->variables_["set!"] = std::make_shared<Set>();
+  global_scope_->variables_["exit"] = std::make_shared<Exit>();
 }
 
 SchemeInterpreter::~SchemeInterpreter() { global_scope_->variables_.clear(); }
 
 std::shared_ptr<Object> SchemeInterpreter::Eval(std::shared_ptr<Object> in) {
-  if (in == nullptr) {
+  if (in == nullptr)
     throw RuntimeError("First element of the list must be function");
-  }
+
   return in->Eval(global_scope_);
 }
 
@@ -64,12 +65,12 @@ ToVector(const std::shared_ptr<Object> &head) {
     return elements;
   } else {
     auto current = AsCell(head);
-    while (current != nullptr) {
+    for (auto current = AsCell(head); current;) {
       elements.push_back(current->GetFirst());
       auto next = current->GetSecond();
-      if (!IsCell(next) && next) {
+      if (!IsCell(next) && next)
         throw std::runtime_error("wrong argument list");
-      }
+
       current = AsCell(next);
     }
   }

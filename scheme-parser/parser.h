@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../scheme-tokenizer/tokenizer.h"
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -14,7 +15,10 @@ enum class Types {
   dotType
 };
 
+enum class Kind { Allow, Disallow };
+
 class Object;
+class Symbol;
 
 class Scope {
 public:
@@ -23,6 +27,8 @@ public:
   explicit Scope(std::shared_ptr<Scope> &parent);
 
   std::shared_ptr<Object> Lookup(const std::string &name);
+
+  std::shared_ptr<Object> &operator[](const std::shared_ptr<Symbol> &symbol);
 
   std::unordered_map<std::string, std::shared_ptr<Object>> variables_;
   std::shared_ptr<Scope> parent_;
@@ -36,9 +42,18 @@ public:
 
   virtual void PrintTo(std::ostream *out) = 0;
 
-  virtual std::shared_ptr<Object> Eval(const std::shared_ptr<Scope> &scope) = 0;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) = 0;
 
   virtual ~Object();
+};
+
+class BuiltInObject : public Object {
+public:
+  virtual Types ID() const override;
+
+  virtual void PrintTo(std::ostream *out) override;
+
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) override;
 };
 
 class Cell : public Object {
@@ -51,8 +66,7 @@ public:
 
   virtual void PrintTo(std::ostream *out) override;
 
-  virtual std::shared_ptr<Object>
-  Eval(const std::shared_ptr<Scope> &scope) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) override;
 
   const std::shared_ptr<Object> &GetFirst() const;
 
@@ -77,7 +91,7 @@ public:
 
   virtual void PrintTo(std::ostream *out) override;
 
-  virtual std::shared_ptr<Object> Eval(const std::shared_ptr<Scope> &) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &) override;
 
   int64_t GetValue() const;
 
@@ -89,16 +103,18 @@ private:
 
 class SpecialForm : public Object {
 public:
-  virtual std::shared_ptr<Object>
-  Eval(const std::shared_ptr<Scope> &scope) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) override;
 
   void PrintTo(std::ostream *out) override;
 
   virtual std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) = 0;
 
-private:
+protected:
+  template <typename... Sizes>
+  void CheckArgs(const std::vector<std::shared_ptr<Object>> &args, Kind kind,
+                 Sizes... sizes);
 };
 
 class Symbol : public Object {
@@ -111,8 +127,7 @@ public:
 
   virtual void PrintTo(std::ostream *out) override;
 
-  virtual std::shared_ptr<Object>
-  Eval(const std::shared_ptr<Scope> &scope) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) override;
 
   const std::string &GetName() const;
 
@@ -128,7 +143,7 @@ public:
 
   explicit Boolean(bool val);
 
-  virtual std::shared_ptr<Object> Eval(const std::shared_ptr<Scope> &) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &) override;
 
   bool IsFalse() override;
 };
@@ -138,7 +153,7 @@ public:
   virtual Types ID() const override;
 
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
@@ -148,246 +163,255 @@ class Dot : public Object {
 
 class Function : public Object {
 public:
-  virtual std::shared_ptr<Object>
-  Eval(const std::shared_ptr<Scope> &scope) override;
+  virtual std::shared_ptr<Object> Eval(std::shared_ptr<Scope> &scope) override;
 
   void PrintTo(std::ostream *out) override;
 
   virtual std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) = 0;
 
-private:
+protected:
+  template <typename... Sizes>
+  void CheckArgs(const std::vector<std::shared_ptr<Object>> &args, Kind kind,
+                 Sizes... sizes);
 };
 
 class Plus : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Minus : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Multiply : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Divide : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class If : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckNull : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckPair : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckNumber : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckBoolean : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckSymbol : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class CheckList : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Eq : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Equal : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class IntegerEqual : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Not : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Equality : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class More : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Less : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class MoreOrEqual : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class LessOrEqual : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Min : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Max : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Abs : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Cons : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Car : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Cdr : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class SetCar : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class SetCdr : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class List : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class ListRef : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class ListTail : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
+        const std::vector<std::shared_ptr<Object>> &args) override;
+};
+
+class Exit : public Function {
+public:
+  std::shared_ptr<Object>
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Lambda : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class LambdaFunction : public Function {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 
   std::shared_ptr<Scope> GetScope() { return current_scope_; }
@@ -411,28 +435,28 @@ private:
 class And : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Or : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Define : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
 class Set : public SpecialForm {
 public:
   std::shared_ptr<Object>
-  Apply(const std::shared_ptr<Scope> &scope,
+  Apply(std::shared_ptr<Scope> &scope,
         const std::vector<std::shared_ptr<Object>> &args) override;
 };
 
