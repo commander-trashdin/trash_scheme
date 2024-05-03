@@ -1,98 +1,83 @@
 # scheme
 
-Язык будет состоять из:
- - Примитивных типов: целых чисел, bool-ов и _символов_ (идентификаторов).
- - Составных типов: пар и списков.
- - Переменных с синтаксической областью видимости.
- - Функций и лямбда-выражений.
-
-Ваша программа должна будет выполнять выражения языка и возвращать результат выполнения.
+The language will consist of:
+ - Primitive types: integers, booleans, and _symbols_ (identifiers).
+ - Composite types: pairs and lists.
+ - Variables with syntactic scope.
+ - Functions and lambda expressions.
 
 ```
-    1 => 1
-    (+ 1 2) => 3
+1 => 1
+(+ 1 2) => 3
 ```
-Обозначение `=>` в примерах здесь и далее разделяет выражение и результат его выполнения.
 
-[спецификация языка](spec.md) описана в отдельном документе.
+The `=>` notation in examples here and elsewhere separates the expression and the result of its execution.
 
-## Выполнение выражений
-Выполнение языка происходит в 3 этапа:
+[language specification](spec.md) is described in a separate document.
 
-**Токенизация** - преобразует текст программы в последовательность
-   атомарных лексем. 
+## Expression Execution
+Execution of the language occurs in 3 stages:
 
-**Синтаксический анализ** - преобразует последовательность токенов
-   в [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree).  AST в
-   лисп-подобных языках программирования представляется в виде
-   списков. 
+**Tokenization** - converts the program text into a sequence
+   of atomic tokens. 
+
+**Syntax Analysis** - converts the sequence of tokens
+   into an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree). In Lisp-like programming languages, the AST is
+   represented as lists.
    
-**Вычисление** - рекурсивно обходит AST программы и преобразует его
-   в соответствии с набором правил.
+**Evaluation** - recursively traverses the AST of the program and transforms it
+   according to a set of rules.
 
-### Пример
+### Example
 
-Выражение 
+The expression 
 ```
-    (+ 2 (/ -3 +4))
-``` 
-в результате токенизации превратится в список токенов:
+(+ 2 (/ -3 +4))
 ```
-    { 
-        OpenParen(),
-        Symbol("+"),
-        Number(2),
-        OpenParen(),
-        Symbol("/"),
-        Number(-3),
-        Number(4),
-        CloseParen(),
-        CloseParen()
-    }
+
+as a result of tokenization will be transformed into a list of tokens:
 ```
+{ 
+    OpenParen(),
+    Symbol("+"),
+    Number(2),
+    OpenParen(),
+    Symbol("/"),
+    Number(-3),
+    Number(4),
+    CloseParen(),
+    CloseParen()
+}
+```
+
+The sequence of tokens as a result of syntax analysis
+will be transformed into a tree:
      
- Последовательность токенов в результате синтаксического анализа
- превратится в дерево:
-     
 ```
+Cell{
+    Symbol("+"),
     Cell{
-        Symbol("+"),
+        Number(2),
         Cell{
-            Number(2),
             Cell{
+                Symbol("/"),
                 Cell{
-                    Symbol("/"),
+                    Number(-3),
                     Cell{
-                        Number(-3),
-                        Cell{
-                            Number(4),
-                            nullptr
-                        }
+                        Number(4),
+                        nullptr
                     }
                 }
-                nullptr
             }
+            nullptr
         }
     }
-```
-Результатом же выполнения выражения будет 
-
-```
-    (+ 2 (/ -3 +4)) => 1
+}
 ```
 
 
-## Обработка ошибок
+The result of executing the expression will be 
 
-* Ваш интерпретатор должен различать 3 вида ошибок:
-
-  1. Ошибки синтаксиса. Возникают когда программа не соответствует
-     формальному синтаксису языка. Или когда программа неправильно
-     использует особые формы.
-
-  2. Ошибки обращения к неопределённым переменным.
-
-  3. Ошибки времени исполнения. К этим ошибкам относятся все остальные
-     ошибки которые могу возникнуть во время выполнения
-     программы. Например: неправильное количество аргументов передано в
-     функцию, неправильный тип аргумента.
+```
+(+ 2 (/ -3 +4)) => 1
+```
