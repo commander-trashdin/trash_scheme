@@ -1,60 +1,68 @@
-# Спецификация языка
+# Language Specification
 
-## Примитивные типы
-Простейшее выражение языка - объект примитивного типа: целое число, булево значение, _символ_ (имя встроенной или пользовательской функции, переменной)
+## Primitive Types
+The simplest expression in the language is an object of a primitive type: an integer, a boolean value,
+_symbol_ (name of a built-in or user-defined function, variable)
+
 ```
-    42 => 42
-    -7 => -7
-    #t => #t
-    #f => #f
-    and => #<Symbol and>
-    quote => #<Symbol quote>
-    + => #<Function +>
+42 => 42
+-7 => -7
+#t => #t
+#f => #f
+and => #<Symbol and>
+quote => #<Symbol quote>
++ => #<Function +>
 ```
-`#t`, `#f` - это булевы значения.
 
-`and`, `quote`, `+` - символы, встроенные функции.
+`#t`, `#f` are boolean values.
 
-У _символа_ без определения результатом выполнения будет ошибка:
+`and`, `quote`, `+` are symbols, built-in functions.
+
+A _symbol_ without definition will result in an error:
+
 ```
-    hello => Execution error: unbound symbol "hello"
+hello => Execution error: unbound symbol "hello"
 ```
-Ошибка приведена только для примера, конкретное поведение не специфицируется.
 
-В _символах_ могут встретиться только ASCII-символы. Пользовательские идентификаторы могут состоять только из латинских букв и цифр. Регистр значим. `plus` и `PLUS` - должны быть разными переменными.
 
-## Применение функций к примитивным типам
+The error is given only as an example; specific behavior is not specified.
 
-Арифметические выражения с числами выглядит так:
+_symbols_ may only contain ASCII characters. User identifiers can consist only of Latin letters and digits. Case is significant. 
+`plus` and `PLUS` are different variables.
+
+## Applying Functions to Primitive Types
+
+Arithmetic expressions with numbers look like this:
+
 ```
-    (+ 1 2) => 3
-    (* 2 3 4) => 24
-    (/ 10 2) => 5
-    (/ 1 2) => 0
+(+ 1 2) => 3
+(* 2 3 4) => 24
+(/ 10 2) => 5
+(/ 1 2) => 0
 ```
-Для вызова функции нужно составить _список_ вида `(<символ функции> [<аргументы функции>])`.
-_Cписок_ - пока стоит понимать как последовательность элементов, строже он будет описан далее.
 
-### Функции для работы с целыми числами
+To call a function, you need to form a _list_ as `(<function symbol> [<function arguments>])`.
+
+### Functions for Working with Integers
 
 1. `+`, `-`, `*`, `/`
 2. `=`, `>`, `<`, `>=`, `<=`
 3. `min`, `max`, `abs`
-Можно применять только к целым числам.
+Can only be applied to integers.
 
-### Логические функции
+### Logical Functions
 
 1. `not`
 
-В логическом контексте, ложным является только значение `#f`, все
-остальные значения (в том числе `0` и пустой список `'()`) являются
-истинными.
+In a logical context, only the value `#f` is false, all
+other values (including `0` and the empty list `'()`) are
+considered true.
 
-### Предикаты
-Предикат - функция, проверяющая некоторое предположение. Возвращает булево значение.
-По соглашению, названия предикатов всегда заканчиваются `?`
+### Predicates
+Predicate - a function that checks a certain assumption. Returns a boolean value.
+By convention, predicate names always end with `?`
 
-Встроенные предикаты.
+Built-in predicates.
 1. `null?`
 2. `pair?`
 3. `number?`
@@ -65,113 +73,116 @@ _Cписок_ - пока стоит понимать как последоват
 8. `integer-equal?`
 
 
-## Списки и пары
+## Lists and Pairs
 
-Единственный композитный тип - это пара. Записывается как 
-`'(1 . 2)`. Списки строятся из пар.
+The only composite type is a pair. Recorded as 
+`'(1 . 2)`. Lists are constructed from pairs.
 
-`'(1 2 3)` то же самое, что и `'(1 . (2 . (3 . ())))`.
+`'(1 2 3)` is the same as `'(1 . (2 . (3 . ())))`.
 
-Пустой список `'()` - это синоним `nullptr`.
+The empty list `'()` is a synonym for `nullptr`.
 
-[Более подробно](https://www.gnu.org/software/emacs/manual/html_node/elisp/Dotted-Pair-Notation.html)
+[More details](https://www.gnu.org/software/emacs/manual/html_node/elisp/Dotted-Pair-Notation.html)
 
 
-Чтобы подавить выполнение выражения, нужно использовать специальную форму quote
+To suppress the execution of an expression, a special form quote must be used
 ```
-    (quote (+ 1 2)) => (+ 1 2)
+(quote (+ 1 2)) => (+ 1 2)
 ```
-Интерпретатор не выполняет выражения, заэкранированные этой формой.
-Для quote есть короткая запись
+
+
+The interpreter does not execute expressions enclosed by this form.
+For quote there is a short notation
 ```
-    '(+ 1 2) => (+ 1 2)
+'(+ 1 2) => (+ 1 2)
 ```
-## Допустимые токены
 
-1. `(` - открывающаяся скобка.
-2. `)` - закрывающаяся скобка.
-3. `3`, `-6` - число.
-4. `'` - одинарная кавычка. Используется как сокращенная запись для
-   особой формы `quote`.
-5. `.` - точка. Используется для записи пары `(1 . 2)` и списка `(1 2 . 3)`.
-6. `foo-bar` - представляет имя переменной в программе. Имя не может
-   начинаться с `+` или `-`, за исключением особых случаев `+` и
-   `-`. *`+1` - это число, а `+` - это идентификатор `+`*
+## Allowed Tokens
 
-## Правила выполнения
-   - `2 => 2` - числа преобразуются сами в себя.
-   - `a => 4` - символы преобразуются в значение переменной.
-   - `(+ a 3) => (#<plus-function> 2 3) => #<plus-function>(2, 3) => 5` - списки вычисляют в 2 этапа.
-    1. Все элементы списка вычисляются рекурсивно.
-    2. Значение первого элемента интерпретируется как функция и
-       применяется к оставщимся элементам списка.
-   - `(set! x 1)` - Если первым элементом списка является специальная
-     форма, то вычисление происходит по специальным правилам
-     вычисления этой формы. Например форма `set!` принимает `x` первым
-     аргументом просто как имя. По правилам вычисления функций `x`
-     должен был бы быть преобразован в значение переменной `x`
+1. `(` - opening bracket.
+2. `)` - closing bracket.
+3. `3`, `-6` - number.
+4. `'` - single quote. Used as a shorthand for
+   the special form `quote`.
+5. `.` - dot. Used to record a pair `(1 . 2)` and a list `(1 2 . 3)`.
+6. `foo-bar` - represents a variable name in the program. The name cannot
+   start with `+` or `-`, except in special cases `+` and
+   `-`. *`+1` is a number, while `+` is the identifier `+`*
 
-## Список особых форм
+## Execution Rules
+   - `2 => 2` - numbers convert themselves.
+   - `a => 4` - symbols convert to the value of the variable.
+   - `(+ a 3) => (#<plus-function> 2 3) => #<plus-function>(2, 3) => 5` - lists are evaluated in 2 stages.
+    1. All list elements are evaluated recursively.
+    2. The value of the first element is interpreted as a function and
+       applied to the remaining list elements.
+   - `(set! x 1)` - If the first element of the list is a special
+     form, then evaluation occurs according to special rules
+     for evaluating this form. For example, the `set!` form takes `x` as the first
+     argument just as a name. By the rules of function evaluation, `x`
+     would have to be converted to the value of the variable `x`
+
+## List of Special Forms
 
 ### `if`
 
-Работает как if :D Возможны 2 формы записи.
+Works like if. Two forms of notation are possible.
 
 * `(if condition true-branch)`
 * `(if condition true-branch false-branch)`
     
-Сначала вычисляет `condition` и проверяет значение на истинность
-(с.м. определение истинности). Затем вычисляет либо `true-branch`,
-либо `false-branch` и возвращает как результат всего `if`-а.
+First evaluates `condition` and checks the value for truth
+(see definition of truth). Then evaluates either `true-branch`,
+or `false-branch` and returns as the result of the whole `if`.
 
 ### `quote`
 
-Возможны 2 формы записи, полная и короткая.
+Two forms of notation, full and short.
 
 * `(quote (1 2 3))`
 * `'(1 2 3)`
   
-Возвращает единственных аргумент AST, не вычисляя его.
+Returns the single argument AST without evaluating it.
 
-### Лямбда выражение.
+### Lambda expression.
  
 * `(lambda (x) (+ 1 x))`
 * `(lambda (x y) (* y x))`
 * `(lambda () 1)`
   
-Создаёт новую функцию. Сначала перечисляется список аргументов
-функции, затем её тело. Тело может состоять из нескольких выражений,
-в этом случае они вычисляются по порядку а результат последнего
-выражения становится результатом функции.
+Creates a new function. First lists the function's arguments,
+then its body. The body can consist of several expressions,
+in which case they are evaluated in order and the result of the last
+expression becomes the result of the function.
 
-### `and`, `or` - логические выражения с _short-circuit evaluation_.
+### `and`, `or` - logical expressions with _short-circuit evaluation_.
 
 * `(and)`, `(and (= 2 2) (> 2 1))`
 * `(or #f)`, `(or #f (launch-nukes))`
   
-Работают похоже на `&&` и `||` в C++. Вычисляют аргументы по
-порядку, останавливаясь когда значение всего выражения уже не может поменяться.
+Work similarly to `&&` and `||` in C++. Evaluate arguments in
+order, stopping when the value of the entire expression can no longer change.
 
 ### `define`
 
-Объявляет новую переменную или перезаписывает переменную новым значением.
+Declares a new variable or overwrites a variable with a new value.
 
-* `(define x '(1 2))` - создаёт переменную `x` со значением `(1 2)`
-* `(define (inc x) (+ x 1))` - создаёт новую функцию `inc`.
+* `(define x '(1 2))` - creates the variable `x` with the value `(1 2)`
+* `(define (inc x) (+ x 1))` - creates a new function `inc`.
 
-Запись `(define (fn-name <args>) <body>)` эквивалентна
+Notation `(define (fn-name <args>) <body>)` is equivalent to
 `(define fn-name (lambda (<args>) <body>))`
 
 ### `set!`
 
-`set!` изменяет значение уже существующей переменной. Если переменной
-небыло, `set!` завершается ошибкой.
+`set!` changes the value of an existing variable. If the variable
+did not exist, `set!` ends with an error.
 
 * `(set! x 1)`
 
-## Список встроенных функций
+## List of Built-in Functions
 
-### Предикаты
+### Predicates
 
 1. `null?`
 2. `pair?`
@@ -182,17 +193,17 @@ _Cписок_ - пока стоит понимать как последоват
 7. `eq?`, `equal?`
 8. `integer-equal?`
 
-### Логические функции
+### Logical Functions
 
 1. `not`
 
-### Функции для работы с целыми числами
+### Functions for Working with Integers
 
 1. `+`, `-`, `*`, `/`
 2. `=`, `>`, `<`, `>=`, `<=`
 3. `min`, `max`, `abs`
  
-### Функции для работы со списками
+### Functions for Working with Lists
 
 1. `cons`
 2. `car`, `cdr`

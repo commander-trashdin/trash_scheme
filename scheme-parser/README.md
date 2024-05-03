@@ -1,82 +1,64 @@
-## Синтаксис scheme
+## Scheme Syntax
 
-В простом случае выражения языка состоят из одного числа или идентификатора.
-В этом случае дерево разбора состоит из одной вершины - числа или идентификатора.
-Для представления числа нужно сделать отдельный класс, наследник `Object`.
-Для представления идентификатора тоже нужно сделать отдельный класс.
-
+In the simple case, language expressions consist of a single number or identifier.
+In this case, the parse tree consists of a single node - either a number or an identifier.
 ```
 5
 +
 foo-bar
 ```
 
-Выражение может быть парой. Пара обозначается круглыми скобками с точкой
-между двумя элементами. Для пары тоже нужно завести отдельный класс.
+An expression can be a pair. A pair is denoted by round brackets with a dot
+between two elements.
 
-Например, для выражения `(1 . 2)` должно строиться дерево из 3-х элементов.
-Корнем дерева является пара с двумя потомками.
+An expression can also be a list.
+A list is one of two entities:
+1. An empty list. Denoted by empty parentheses - ().
+2. A pair, in which the second element is a list. In this case, the first element of the pair is called the head of the list, and the second - the tail.
 
-Выражение может быть списком.
-Список это одна из двух сущностей:
-1. пустой список. Обозначается пустыми скобочками - (). Можно думать, что это объект-константа со специальной семантикой.
-2. пара, в которой второй элемент это список. В этом случае первый элемент пары называется головой (head) списка, а второй - хвостом (tail).
-
-Из этого определения следует, что список из трех элементов можно записать так:
+From this definition, a list of three elements can be written as:
+`(1 . (2 . (3 . ())))`
 ```
-(1 . (2 . (3 . ())))
-
- pair => pair => pair => ()
+pair => pair => pair => ()
   |       |       |
   1       2       3
 ```
-Однако так записывать списки неудобно и разработчики языка добавили сокращенную запись:
+
+Abbreviated notation:
 ```
 (1 2 3)
 ```
-Так записывается "правильный" список (proper list). 
 
-В языке также есть поддержка "неправильных" списков (improper list).
-В таком списке второй элемент самой вложенной пары не является пустым списком.
+
+This is how a "proper list" is written.
+
+The language also supports "improper lists".
+In such a list, the second element of the most nested pair is not an empty list.
 ```
 (1 . (2 . 3))
 pair => pair => 3
   |       |
   1       2
 ```
-Для таких списков тоже есть сокращенная запись:
+
+
+There is also an abbreviated notation for such lists:
 ```
-(1  2 . 3)
+(1 2 . 3)
 ```
 
-В приведенных выше примерах элементы списков могут любыми корректными выражениями
+In the above examples, the elements of lists can be any valid expressions
 ```
 ((1 . 2) (3 4) 5)
 (1 () (2 3 4) 5)
 ```
 
-**От вашего задания требуется, чтобы пустой список был представлен с помощью nullptr.**
 
+## Recursive Descent
 
-## Рекурсивный спуск
+The grammar of the `scheme` language falls into the `LL(1)` class. This means that it is possible
+to write a recursive descent parsing algorithm that looks ahead by only one token.
 
-Грамматика языка `scheme` лежит в классе `LL(1)`. Это значит, что можно
-написать рекурсивный алгоритм разбора, который заглядывает всего на один токен
-вперёд.
+## Error Handling
 
-## Обработка ошибок
-
-Ваш парсер должен проверять входной поток на корректность. В случае
-если поток токенов не соответствует корректному выражению, нужно бросать
-исключение `SyntaxError`.
-
-```
-if (/* случилась ошибка */) {
-    throw SyntaxError{"Описание ошибки"};
-}
-```
-
-
-
-
-
+In case the stream of tokens does not correspond to a correct expression, a `SyntaxError` exception is thrown.
