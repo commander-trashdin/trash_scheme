@@ -1,11 +1,13 @@
 #include "parser.h"
 #include <iostream>
 
-Scope::Scope() : parent_(nullptr) {}
+Scope::~Scope() {
+  GCManager::GetInstance().RemoveRoot(this);
+  for (auto &[_, obj] : variables_)
+    obj->Unmark();
+}
 
-Scope::Scope(std::shared_ptr<Scope> &parent) : parent_(parent) {}
-
-std::shared_ptr<Object> Scope::Lookup(const std::string &name) {
+Object *Scope::Lookup(const std::string &name) {
   auto it = variables_.find(name);
   if (it == variables_.end()) {
     if (!parent_)
@@ -16,30 +18,45 @@ std::shared_ptr<Object> Scope::Lookup(const std::string &name) {
   return it->second;
 }
 
-std::shared_ptr<Object> &
-Scope::operator[](const std::shared_ptr<Symbol> &symbol) {
+Object *&Scope::operator[](Symbol *symbol) {
   return variables_[symbol->GetName()];
 }
+Object::~Object() { GCManager::GetInstance().UnregisterObject(this); }
+
+void Object::Mark() {
+  marked_ = true;
+  MarkRelated();
+}
+
+void Object::Unmark() {
+  marked_ = false;
+  UnmarkRelated();
+}
+
+void Object::MarkRelated() {}
+void Object::UnmarkRelated() {}
+
+bool Object::isMarked() const { return marked_; }
 
 Types Object::ID() const { return Types::tType; }
 
-bool Object::IsFalse() { return false; }
-
-Object::~Object() = default;
+bool Object::IsFalse() const { return false; }
 
 Types BuiltInObject::ID() const { throw RuntimeError("Not a builtin type!"); }
 
-void BuiltInObject::PrintTo(std::ostream *) {
+void BuiltInObject::PrintTo(std::ostream *) const {
   throw RuntimeError("Cannot print builtin object!");
 }
-
-std::shared_ptr<Object> BuiltInObject::Eval(std::shared_ptr<Scope> &) {
+void BuiltInObject::PrintDebug(std::ostream *out) const {
+  *out << "#<builtin>" << std::endl;
+}
+Object *BuiltInObject::Eval(std::shared_ptr<Scope> &) {
   throw RuntimeError("Cannot eval builtin object!");
 }
 
 template <typename... Sizes>
-void SpecialForm::CheckArgs(const std::vector<std::shared_ptr<Object>> &args,
-                            Kind kind, Sizes... sizes) {
+void SpecialForm::CheckArgs(const std::vector<Object *> &args, Kind kind,
+                            Sizes... sizes) {
   std::vector<size_t> allowedSizes = {static_cast<unsigned long>(sizes)...};
   if (kind == Kind::Allow && std::find(allowedSizes.begin(), allowedSizes.end(),
                                        args.size()) == allowedSizes.end()) {
@@ -54,8 +71,8 @@ void SpecialForm::CheckArgs(const std::vector<std::shared_ptr<Object>> &args,
 }
 
 template <typename... Sizes>
-void Function::CheckArgs(const std::vector<std::shared_ptr<Object>> &args,
-                         Kind kind, Sizes... sizes) {
+void Function::CheckArgs(const std::vector<Object *> &args, Kind kind,
+                         Sizes... sizes) {
   std::vector<size_t> allowedSizes = {static_cast<unsigned long>(sizes)...};
   if (kind == Kind::Allow && std::find(allowedSizes.begin(), allowedSizes.end(),
                                        args.size()) == allowedSizes.end()) {
@@ -69,14 +86,43 @@ void Function::CheckArgs(const std::vector<std::shared_ptr<Object>> &args,
   return;
 }
 
+SpecialForm::SpecialForm(const std::string &&name, ApplyMethod &&apply_method)
+    : name(name), apply_method(apply_method) {}
+
+Function::Function(const std::string &&name, ApplyMethod &&apply_method)
+    : name(name), apply_method(apply_method) {}
+
+Object *SpecialForm::Apply(std::shared_ptr<Scope> &scope,
+                           const std::vector<Object *> &args) {
+  return (this->apply_method)(scope, args);
+}
+
+Object *Function::Apply(std::shared_ptr<Scope> &scope,
+                        const std::vector<Object *> &args) {
+  return (this->apply_method)(scope, args);
+}
+
 Cell::Cell() : head_(nullptr), tail_(nullptr) {}
 
-Cell::Cell(std::shared_ptr<Object> head, std::shared_ptr<Object> tail)
-    : head_(head), tail_(tail) {}
+Cell::Cell(Object *head, Object *tail) : head_(head), tail_(tail) {}
+
+void Cell::MarkRelated() {
+  if (head_)
+    head_->Mark();
+  if (tail_)
+    tail_->Mark();
+}
+
+void Cell::UnmarkRelated() {
+  if (head_)
+    head_->Unmark();
+  if (tail_)
+    tail_->Unmark();
+}
 
 Types Cell::ID() const { return Types::cellType; }
 
-void Cell::PrintTo(std::ostream *out) {
+void Cell::PrintTo(std::ostream *out) const {
   *out << '(';
   ::PrintTo(head_, out);
   auto next = AsCell(tail_);
@@ -99,17 +145,22 @@ void Cell::PrintTo(std::ostream *out) {
   return;
 }
 
-std::shared_ptr<Object> Cell::Eval(std::shared_ptr<Scope> &scope) {
+void Cell::PrintDebug(std::ostream *out) const {
+  PrintTo(out);
+  *out << std::endl;
+}
+
+Object *Cell::Eval(std::shared_ptr<Scope> &scope) {
   if (head_ == nullptr)
     throw RuntimeError("First element of the list is not a function");
 
   auto ptr = head_->Eval(scope);
-  auto fn = std::dynamic_pointer_cast<Function>(ptr);
-  auto sf = std::dynamic_pointer_cast<SpecialForm>(ptr);
+  auto fn = dynamic_cast<Function *>(ptr);
+  auto sf = dynamic_cast<SpecialForm *>(ptr);
   if (!fn && !sf)
     throw RuntimeError("First element of the list must be a function");
 
-  std::vector<std::shared_ptr<Object>> args = ToVector(tail_);
+  std::vector<Object *> args = ToVector(tail_);
   if (fn)
     for (auto &arg : args)
       arg = arg->Eval(scope);
@@ -117,13 +168,13 @@ std::shared_ptr<Object> Cell::Eval(std::shared_ptr<Scope> &scope) {
   return fn ? fn->Apply(scope, args) : sf->Apply(scope, args);
 }
 
-const std::shared_ptr<Object> &Cell::GetFirst() const { return head_; }
+Object *Cell::GetFirst() const { return head_; }
 
-void Cell::SetFirst(std::shared_ptr<Object> object) { head_ = object; }
+void Cell::SetFirst(Object *object) { head_ = object; }
 
-const std::shared_ptr<Object> &Cell::GetSecond() const { return tail_; }
+Object *Cell::GetSecond() const { return tail_; }
 
-void Cell::SetSecond(std::shared_ptr<Object> object) { tail_ = object; }
+void Cell::SetSecond(Object *object) { tail_ = object; }
 
 Number::Number() : value_(0) {}
 
@@ -131,11 +182,13 @@ Number::Number(int64_t value) : value_(value) {}
 
 Types Number::ID() const { return Types::numberType; }
 
-void Number::PrintTo(std::ostream *out) { *out << value_; }
-
-std::shared_ptr<Object> Number::Eval(std::shared_ptr<Scope> &) {
-  return shared_from_this();
+void Number::PrintTo(std::ostream *out) const { *out << value_; }
+void Number::PrintDebug(std::ostream *out) const {
+  PrintTo(out);
+  *out << std::endl;
 }
+
+Object *Number::Eval(std::shared_ptr<Scope> &) { return this; }
 
 int64_t Number::GetValue() const { return value_; }
 
@@ -147,9 +200,13 @@ Symbol::Symbol(std::string name) : name_(name) {}
 
 Types Symbol::ID() const { return Types::symbolType; }
 
-void Symbol::PrintTo(std::ostream *out) { *out << name_; }
+void Symbol::PrintTo(std::ostream *out) const { *out << name_; }
+void Symbol::PrintDebug(std::ostream *out) const {
+  PrintTo(out);
+  *out << std::endl;
+}
 
-std::shared_ptr<Object> Symbol::Eval(std::shared_ptr<Scope> &scope) {
+Object *Symbol::Eval(std::shared_ptr<Scope> &scope) {
   return scope->Lookup(name_);
 }
 
@@ -157,13 +214,10 @@ const std::string &Symbol::GetName() const { return name_; }
 
 std::string &Symbol::SetName() { return name_; }
 
-Types Quote::ID() const { return Types::quoteType; }
-
-std::shared_ptr<Object>
-Quote::Apply(std::shared_ptr<Scope> &scope,
-             const std::vector<std::shared_ptr<Object>> &args) {
+Object *Quote(std::shared_ptr<Scope> &scope,
+              const std::vector<Object *> &args) {
   std::ignore = scope;
-  CheckArgs(args, Kind::Allow, 1);
+  SpecialForm::CheckArgs(args, Kind::Allow, 1);
   return args[0];
 }
 
@@ -171,95 +225,89 @@ Boolean::Boolean() {}
 
 Boolean::Boolean(bool val) { name_ = val ? "#t" : "#f"; }
 
-std::shared_ptr<Object> Boolean::Eval(std::shared_ptr<Scope> &) {
-  return shared_from_this();
-}
+Object *Boolean::Eval(std::shared_ptr<Scope> &) { return this; }
 
-bool Boolean::IsFalse() { return this->GetName() == "#f"; }
+bool Boolean::IsFalse() const { return this->GetName() == "#f"; }
 
-Types Dot::ID() const { return Types::dotType; }
-
-void Function::PrintTo(std::ostream *) {
+void Function::PrintTo(std::ostream *) const {
   throw RuntimeError("can't print function");
 }
 
-void SpecialForm::PrintTo(std::ostream *) {
+void Function::PrintDebug(std::ostream *out) const {
+  *out << "#<function " << name << ">" << std::endl;
+}
+
+void SpecialForm::PrintTo(std::ostream *) const {
   throw RuntimeError("can't print special form");
 }
 
-std::shared_ptr<Object> Function::Eval(std::shared_ptr<Scope> &) {
+void SpecialForm::PrintDebug(std::ostream *out) const {
+  *out << "#<special form " << name << ">" << std::endl;
+}
+
+Object *Function::Eval(std::shared_ptr<Scope> &) {
   throw RuntimeError("can't eval function");
 }
 
-std::shared_ptr<Object> SpecialForm::Eval(std::shared_ptr<Scope> &) {
+Object *SpecialForm::Eval(std::shared_ptr<Scope> &) {
   throw RuntimeError("can't eval function");
 }
 
-std::shared_ptr<Object>
-Plus::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
+Object *Plus(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   int64_t value = 0;
   for (const auto &arg : args) {
-    auto number = std::dynamic_pointer_cast<Number>(arg);
+    auto number = dynamic_cast<Number *>(arg);
     if (!number)
       throw RuntimeError("+ arguments must be numbers");
 
     value += number->GetValue();
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-Minus::Apply(std::shared_ptr<Scope> &,
-             const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
-  int64_t value = std::dynamic_pointer_cast<Number>(args[0])->GetValue();
+Object *Minus(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
+  int64_t value = dynamic_cast<Number *>(args[0])->GetValue();
   if (!value)
     throw RuntimeError("- arguments must be numbers");
 
   for (size_t i = 1; i < args.size(); ++i) {
-    auto number = std::dynamic_pointer_cast<Number>(args[i]);
+    auto number = dynamic_cast<Number *>(args[i]);
     if (!number)
       throw RuntimeError("- arguments must be numbers");
     value -= number->GetValue();
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-Divide::Apply(std::shared_ptr<Scope> &,
-              const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
-  int64_t value = std::dynamic_pointer_cast<Number>(args[0])->GetValue();
+Object *Divide(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
+  int64_t value = dynamic_cast<Number *>(args[0])->GetValue();
   if (!value)
     throw RuntimeError("/ arguments must be numbers");
 
   for (size_t i = 1; i < args.size(); ++i) {
-    auto number = std::dynamic_pointer_cast<Number>(args[i]);
+    auto number = dynamic_cast<Number *>(args[i]);
     if (!number)
       throw RuntimeError("/ arguments must be numbers");
     value /= number->GetValue();
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-Multiply::Apply(std::shared_ptr<Scope> &,
-                const std::vector<std::shared_ptr<Object>> &args) {
+Object *Multiply(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   int64_t value = 1;
   for (const auto &arg : args) {
-    auto number = std::dynamic_pointer_cast<Number>(arg);
+    auto number = dynamic_cast<Number *>(arg);
     if (!number)
       throw RuntimeError("* arguments must be numbers");
     value *= number->GetValue();
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-If::Apply(std::shared_ptr<Scope> &scope,
-          const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2, 3);
+Object *If(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
+  SpecialForm::CheckArgs(args, Kind::Allow, 2, 3);
 
   auto result = args[0]->Eval(scope);
   if (result && !result->IsFalse())
@@ -268,76 +316,62 @@ If::Apply(std::shared_ptr<Scope> &scope,
     return args.size() == 2 ? nullptr : args[2]->Eval(scope);
 }
 
-std::shared_ptr<Object>
-CheckNull::Apply(std::shared_ptr<Scope> &,
-                 const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
-  return std::make_shared<Boolean>(args[0] == nullptr);
+Object *CheckNull(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
+  return Object::Create<Boolean>(args[0] == nullptr);
 }
 
-std::shared_ptr<Object>
-CheckPair::Apply(std::shared_ptr<Scope> &,
-                 const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
-  return std::make_shared<Boolean>(IsCell(args[0]));
+Object *CheckPair(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
+  return Object::Create<Boolean>(IsCell(args[0]));
 }
 
-std::shared_ptr<Object>
-CheckNumber::Apply(std::shared_ptr<Scope> &,
-                   const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
-  return std::make_shared<Boolean>(IsNumber(args[0]));
+Object *CheckNumber(std::shared_ptr<Scope> &,
+                    const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
+  return Object::Create<Boolean>(IsNumber(args[0]));
 }
 
-std::shared_ptr<Object>
-CheckBoolean::Apply(std::shared_ptr<Scope> &,
-                    const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
-  return std::make_shared<Boolean>(IsSymbol(args[0]) &&
-                                   (AsSymbol(args[0])->GetName() == "#f" ||
-                                    AsSymbol(args[0])->GetName() == "#t"));
+Object *CheckBoolean(std::shared_ptr<Scope> &,
+                     const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
+  return Object::Create<Boolean>(IsSymbol(args[0]) &&
+                                 (AsSymbol(args[0])->GetName() == "#f" ||
+                                  AsSymbol(args[0])->GetName() == "#t"));
 }
 
-std::shared_ptr<Object>
-CheckSymbol::Apply(std::shared_ptr<Scope> &,
-                   const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
-  return std::make_shared<Boolean>(IsSymbol(args[0]));
+Object *CheckSymbol(std::shared_ptr<Scope> &,
+                    const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
+  return Object::Create<Boolean>(IsSymbol(args[0]));
 }
 
-std::shared_ptr<Object>
-CheckList::Apply(std::shared_ptr<Scope> &,
-                 const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
+Object *CheckList(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
   for (auto checker = args[0]; checker;
        checker = AsCell(checker)->GetSecond()) {
     if (!IsCell(checker))
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
 // FIXME
-std::shared_ptr<Object>
-Eq::Apply(std::shared_ptr<Scope> &,
-          const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
-  return std::make_shared<Boolean>(args[0] == nullptr);
+Object *Eq(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
+  return Object::Create<Boolean>(args[0] == nullptr);
 }
 
 // FIXME
-std::shared_ptr<Object>
-Equal::Apply(std::shared_ptr<Scope> &,
-             const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
-  return std::make_shared<Boolean>(args[0] == nullptr);
+Object *Equal(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
+  return Object::Create<Boolean>(args[0] == nullptr);
 }
 
-std::shared_ptr<Object>
-IntegerEqual::Apply(std::shared_ptr<Scope> &,
-                    const std::vector<std::shared_ptr<Object>> &args) {
+Object *IntegerEqual(std::shared_ptr<Scope> &,
+                     const std::vector<Object *> &args) {
   if (args.size() == 0)
-    return std::make_shared<Boolean>(true);
+    return Object::Create<Boolean>(true);
 
   if (!IsNumber(args[0]))
     throw RuntimeError("Syntax error!");
@@ -348,25 +382,21 @@ IntegerEqual::Apply(std::shared_ptr<Scope> &,
       throw RuntimeError("Syntax error!");
 
     if (value != AsNumber(obj)->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-Not::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
+Object *Not(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
 
-  return std::make_shared<Boolean>(args[0] == nullptr ? false
-                                                      : args[0]->IsFalse());
+  return Object::Create<Boolean>(args[0] == nullptr ? false
+                                                    : args[0]->IsFalse());
 }
 
-std::shared_ptr<Object>
-Equality::Apply(std::shared_ptr<Scope> &,
-                const std::vector<std::shared_ptr<Object>> &args) {
+Object *Equality(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   if (args.size() == 0)
-    return std::make_shared<Boolean>(true);
+    return Object::Create<Boolean>(true);
 
   if (!IsNumber(args[0]))
     throw RuntimeError("Syntax error!");
@@ -377,67 +407,59 @@ Equality::Apply(std::shared_ptr<Scope> &,
       throw RuntimeError("Syntax error!");
 
     if (value != AsNumber(obj)->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-More::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
+Object *More(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   for (size_t i = 1; i < args.size(); ++i) {
     if (!IsNumber(args[i]) || !IsNumber(args[i - 1]))
       throw RuntimeError("Syntax error!");
 
     if (AsNumber(args[i - 1])->GetValue() <= AsNumber(args[i])->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-Less::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
+Object *Less(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   for (size_t i = 1; i < args.size(); ++i) {
     if (!IsNumber(args[i]) || !IsNumber(args[i - 1]))
       throw RuntimeError("Syntax error!");
 
     if (AsNumber(args[i - 1])->GetValue() >= AsNumber(args[i])->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-MoreOrEqual::Apply(std::shared_ptr<Scope> &,
-                   const std::vector<std::shared_ptr<Object>> &args) {
+Object *MoreOrEqual(std::shared_ptr<Scope> &,
+                    const std::vector<Object *> &args) {
   for (size_t i = 1; i < args.size(); ++i) {
     if (!IsNumber(args[i]) || !IsNumber(args[i - 1]))
       throw RuntimeError("Syntax error!");
 
     if (AsNumber(args[i - 1])->GetValue() < AsNumber(args[i])->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-LessOrEqual::Apply(std::shared_ptr<Scope> &,
-                   const std::vector<std::shared_ptr<Object>> &args) {
+Object *LessOrEqual(std::shared_ptr<Scope> &,
+                    const std::vector<Object *> &args) {
   for (size_t i = 1; i < args.size(); ++i) {
     if (!IsNumber(args[i]) || !IsNumber(args[i - 1]))
       throw RuntimeError("Syntax error!");
 
     if (AsNumber(args[i - 1])->GetValue() > AsNumber(args[i])->GetValue())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-Min::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
+Object *Min(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
 
   if (!IsNumber(args[0]))
     throw RuntimeError("Syntax error!");
@@ -451,13 +473,11 @@ Min::Apply(std::shared_ptr<Scope> &,
     if (value > current)
       value = current;
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-Max::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 0);
+Object *Max(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Disallow, 0);
 
   if (!IsNumber(args[0]))
     throw RuntimeError("Syntax error!");
@@ -471,32 +491,26 @@ Max::Apply(std::shared_ptr<Scope> &,
     if (value < current)
       value = current;
   }
-  return std::make_shared<Number>(value);
+  return Object::Create<Number>(value);
 }
 
-std::shared_ptr<Object>
-Abs::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
+Object *Abs(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
 
   if (!IsNumber(args[0]))
     throw RuntimeError("Syntax error!");
 
-  return std::make_shared<Number>(std::abs(AsNumber(args[0])->GetValue()));
+  return Object::Create<Number>(std::abs(AsNumber(args[0])->GetValue()));
 }
 
-std::shared_ptr<Object>
-Cons::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *Cons(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 2);
 
-  return std::make_shared<Cell>(args[0], args[1]);
+  return Object::Create<Cell>(args[0], args[1]);
 }
 
-std::shared_ptr<Object>
-Car::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
+Object *Car(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
 
   if (!IsCell(args[0]))
     throw RuntimeError("Syntax error!");
@@ -504,10 +518,8 @@ Car::Apply(std::shared_ptr<Scope> &,
   return AsCell(args[0])->GetFirst();
 }
 
-std::shared_ptr<Object>
-Cdr::Apply(std::shared_ptr<Scope> &,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 1);
+Object *Cdr(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 1);
 
   if (!IsCell(args[0]))
     throw RuntimeError("Syntax error!");
@@ -515,10 +527,8 @@ Cdr::Apply(std::shared_ptr<Scope> &,
   return AsCell(args[0])->GetSecond();
 }
 
-std::shared_ptr<Object>
-SetCar::Apply(std::shared_ptr<Scope> &,
-              const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *SetCar(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 2);
 
   if (!IsCell(args[0]))
     throw RuntimeError("Syntax error!");
@@ -527,10 +537,8 @@ SetCar::Apply(std::shared_ptr<Scope> &,
   return args[0];
 }
 
-std::shared_ptr<Object>
-SetCdr::Apply(std::shared_ptr<Scope> &,
-              const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *SetCdr(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 2);
 
   if (!IsCell(args[0]))
     throw RuntimeError("Syntax error!");
@@ -539,27 +547,23 @@ SetCdr::Apply(std::shared_ptr<Scope> &,
   return args[0];
 }
 
-std::shared_ptr<Object>
-List::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
+Object *List(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
   if (args.size() == 0)
     return nullptr;
 
-  auto new_cell = std::make_shared<Cell>();
+  auto new_cell = Object::Create<Cell>();
   auto res = new_cell;
   for (size_t ind = 0; ind < args.size();
        ++ind, new_cell = AsCell(new_cell->GetSecond())) {
     new_cell->SetFirst(args[ind]);
     if (ind != args.size() - 1)
-      new_cell->SetSecond(std::make_shared<Cell>());
+      new_cell->SetSecond(Object::Create<Cell>());
   }
   return res;
 }
 
-std::shared_ptr<Object>
-ListRef::Apply(std::shared_ptr<Scope> &,
-               const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *ListRef(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 2);
 
   if (!IsCell(args[0]) && !IsNumber(args[1]))
     throw RuntimeError("Arguments must be list and a number");
@@ -578,10 +582,8 @@ ListRef::Apply(std::shared_ptr<Scope> &,
   return AsCell(scope)->GetFirst();
 }
 
-std::shared_ptr<Object>
-ListTail::Apply(std::shared_ptr<Scope> &,
-                const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *ListTail(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 2);
 
   if (!IsCell(args[0]) && !IsNumber(args[1]))
     throw RuntimeError("Syntax error!");
@@ -602,39 +604,34 @@ ListTail::Apply(std::shared_ptr<Scope> &,
   return AsCell(scope);
 }
 
-std::shared_ptr<Object>
-And::Apply(std::shared_ptr<Scope> &scope,
-           const std::vector<std::shared_ptr<Object>> &args) {
+Object *And(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
   for (size_t ind = 0; ind < args.size(); ++ind) {
     auto res = args[ind]->Eval(scope);
     if (res->IsFalse())
-      return std::make_shared<Boolean>(false);
+      return Object::Create<Boolean>(false);
     if (ind == args.size() - 1)
       return res;
   }
-  return std::make_shared<Boolean>(true);
+  return Object::Create<Boolean>(true);
 }
 
-std::shared_ptr<Object>
-Or::Apply(std::shared_ptr<Scope> &scope,
-          const std::vector<std::shared_ptr<Object>> &args) {
+Object *Or(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
   for (size_t ind = 0; ind < args.size(); ++ind) {
     auto res = args[ind]->Eval(scope);
     if (!res->IsFalse())
       return res;
   }
-  return std::make_shared<Boolean>(false);
+  return Object::Create<Boolean>(false);
 }
 
-std::shared_ptr<Object>
-Define::Apply(std::shared_ptr<Scope> &scope,
-              const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *Define(std::shared_ptr<Scope> &scope,
+               const std::vector<Object *> &args) {
+  SpecialForm::CheckArgs(args, Kind::Allow, 2);
 
   if (IsSymbol(args[0])) {
     (*scope)[AsSymbol(args[0])] = args[1]->Eval(scope);
   } else if (IsCell(args[0])) {
-    auto new_lambda_function = std::make_shared<LambdaFunction>();
+    auto new_lambda_function = Object::Create<LambdaFunction>();
     new_lambda_function->SetArgs(ToVector(AsCell(args[0])->GetSecond()));
     for (auto &arg : new_lambda_function->GetArgs()) {
       if (!IsSymbol(arg))
@@ -649,10 +646,8 @@ Define::Apply(std::shared_ptr<Scope> &scope,
   return nullptr;
 }
 
-std::shared_ptr<Object>
-Set::Apply(std::shared_ptr<Scope> &scope,
-           const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 2);
+Object *Set(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
+  SpecialForm::CheckArgs(args, Kind::Allow, 2);
 
   if (IsSymbol(args[0])) {
     scope->Lookup(
@@ -664,30 +659,42 @@ Set::Apply(std::shared_ptr<Scope> &scope,
   return nullptr;
 }
 
-std::shared_ptr<Object>
-Lambda::Apply(std::shared_ptr<Scope> &scope,
-              const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Disallow, 1, 0);
+Object *Lambda(std::shared_ptr<Scope> &scope,
+               const std::vector<Object *> &args) {
+  SpecialForm::CheckArgs(args, Kind::Disallow, 1, 0);
 
   if (!IsCell(args[0]) && args[0])
     throw SyntaxError("Bad argument list!");
 
-  auto new_lambda_function = std::make_shared<LambdaFunction>();
+  auto new_lambda_function = Object::Create<LambdaFunction>();
   new_lambda_function->SetArgs(ToVector(args[0]));
   for (auto &arg : new_lambda_function->GetArgs())
     if (!IsSymbol(arg))
       throw SyntaxError("wrong argument name");
 
-  auto local_scope = std::make_shared<Scope>(scope);
+  auto local_scope = Scope::Create(scope);
   new_lambda_function->SetScope(local_scope);
   for (size_t ind = 1; ind < args.size(); ++ind)
     new_lambda_function->AddToBody(args[ind]);
   return new_lambda_function;
 }
 
-std::shared_ptr<Object>
-LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
-                      const std::vector<std::shared_ptr<Object>> &args) {
+void LambdaFunction::MarkRelated() {
+  for (auto &arg : args_)
+    arg->Mark();
+  for (auto &body : body_)
+    body->Mark();
+}
+
+void LambdaFunction::UnmarkRelated() {
+  for (auto &arg : args_)
+    arg->Unmark();
+  for (auto &body : body_)
+    body->Unmark();
+}
+
+Object *LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
+                              const std::vector<Object *> &args) {
   CheckArgs(args, Kind::Allow, args_.size());
 
   for (size_t ind = 0; ind < args.size(); ++ind)
@@ -702,11 +709,9 @@ LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
   return nullptr;
 }
 
-std::shared_ptr<Object>
-Exit::Apply(std::shared_ptr<Scope> &,
-            const std::vector<std::shared_ptr<Object>> &args) {
-  CheckArgs(args, Kind::Allow, 0);
-  return std::make_shared<BuiltInObject>();
+Object *Exit(std::shared_ptr<Scope> &, const std::vector<Object *> &args) {
+  Function::CheckArgs(args, Kind::Allow, 0);
+  return Object::Create<BuiltInObject>();
 }
 
 SyntaxError::SyntaxError(const std::string &what) : std::runtime_error(what) {}
@@ -717,31 +722,31 @@ NameError::NameError(const std::string &name)
 RuntimeError::RuntimeError(const std::string &what)
     : std::runtime_error(what) {}
 
-bool IsNumber(const std::shared_ptr<Object> &obj) {
+bool IsNumber(const Object *obj) {
   return obj && Types::numberType == obj->ID();
 }
 
-std::shared_ptr<Number> AsNumber(const std::shared_ptr<Object> &obj) {
-  return IsNumber(obj) ? std::static_pointer_cast<Number>(obj) : nullptr;
+Number *AsNumber(const Object *obj) {
+  return IsNumber(obj) ? static_cast<Number *>(const_cast<Object *>(obj))
+                       : nullptr;
 }
 
-bool IsCell(const std::shared_ptr<Object> &obj) {
-  return obj && Types::cellType == obj->ID();
+bool IsCell(const Object *obj) { return obj && Types::cellType == obj->ID(); }
+
+Cell *AsCell(const Object *obj) {
+  return IsCell(obj) ? static_cast<Cell *>(const_cast<Object *>(obj)) : nullptr;
 }
 
-std::shared_ptr<Cell> AsCell(const std::shared_ptr<Object> &obj) {
-  return IsCell(obj) ? std::static_pointer_cast<Cell>(obj) : nullptr;
-}
-
-bool IsSymbol(const std::shared_ptr<Object> &obj) {
+bool IsSymbol(const Object *obj) {
   return obj && Types::symbolType == obj->ID();
 }
 
-std::shared_ptr<Symbol> AsSymbol(const std::shared_ptr<Object> &obj) {
-  return IsSymbol(obj) ? std::static_pointer_cast<Symbol>(obj) : nullptr;
+Symbol *AsSymbol(const Object *obj) {
+  return IsSymbol(obj) ? static_cast<Symbol *>(const_cast<Object *>(obj))
+                       : nullptr;
 }
 
-std::shared_ptr<Object> ReadProper(Tokenizer *tokenizer) {
+Object *ReadProper(Tokenizer *tokenizer) {
   if (tokenizer->IsEnd())
     return nullptr;
 
@@ -749,19 +754,19 @@ std::shared_ptr<Object> ReadProper(Tokenizer *tokenizer) {
   if (SymbolToken *symbol = std::get_if<SymbolToken>(&current_object)) {
     tokenizer->Next();
     if (symbol->name == "#t")
-      return std::make_shared<Boolean>(true);
+      return Object::Create<Boolean>(true);
     else if (symbol->name == "#f")
-      return std::make_shared<Boolean>(false);
-    return std::make_shared<Symbol>(symbol->name);
+      return Object::Create<Boolean>(false);
+    return Object::Create<Symbol>(symbol->name);
   } else if (ConstantToken *constant =
                  std::get_if<ConstantToken>(&current_object)) {
     tokenizer->Next();
-    return std::make_shared<Number>(constant->value);
+    return Object::Create<Number>(constant->value);
   } else if (std::holds_alternative<QuoteToken>(current_object)) {
     tokenizer->Next();
-    auto new_cell = std::make_shared<Cell>();
-    auto list = std::make_shared<Cell>();
-    new_cell->SetFirst(std::make_shared<Symbol>("quote"));
+    auto new_cell = Object::Create<Cell>();
+    auto list = Object::Create<Cell>();
+    new_cell->SetFirst(Object::Create<Symbol>("quote"));
     list->SetFirst(ReadProper(tokenizer));
     new_cell->SetSecond(list);
     return new_cell;
@@ -778,12 +783,12 @@ std::shared_ptr<Object> ReadProper(Tokenizer *tokenizer) {
   throw SyntaxError("Unexpected symbol");
 }
 
-std::shared_ptr<Object> ReadList(Tokenizer *tokenizer) {
+Object *ReadList(Tokenizer *tokenizer) {
   if (tokenizer->IsEnd())
     throw SyntaxError("Input not complete");
 
-  std::shared_ptr<Object> head = nullptr;
-  std::shared_ptr<Cell> tail = nullptr;
+  Object *head = nullptr;
+  Cell *tail = nullptr;
   while (!tokenizer->IsEnd()) {
     auto current_token = tokenizer->GetToken();
     if (std::holds_alternative<BracketToken>(current_token) &&
@@ -802,7 +807,7 @@ std::shared_ptr<Object> ReadList(Tokenizer *tokenizer) {
 
     } else {
       auto current_object = ReadProper(tokenizer);
-      auto new_cell = std::make_shared<Cell>();
+      auto new_cell = Object::Create<Cell>();
       new_cell->SetFirst(current_object);
       if (head == nullptr)
         head = new_cell;
@@ -814,7 +819,7 @@ std::shared_ptr<Object> ReadList(Tokenizer *tokenizer) {
   throw SyntaxError("Unmatched opening parentheses");
 }
 
-std::shared_ptr<Object> Read(Tokenizer *tokenizer) {
+Object *Read(Tokenizer *tokenizer) {
   auto obj = ReadProper(tokenizer);
   if (!tokenizer->IsEnd())
     throw SyntaxError("ImproperSyntax");

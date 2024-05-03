@@ -1,5 +1,7 @@
+#include "gc.h"
 #include "parser.h"
 #include "scheme.h"
+#include <fstream>
 #include <iostream>
 #include <memory>
 
@@ -10,12 +12,20 @@ int main() {
   while (true) {
     std::stringstream ss{expression};
     Tokenizer tokenizer{&ss};
-    auto obj = sch_int.Eval(Read(&tokenizer));
-    if (std::dynamic_pointer_cast<BuiltInObject>(obj) != nullptr)
+    auto obj = Read(&tokenizer);
+    obj->Mark();
+    auto res = sch_int.Eval(obj);
+    obj->Unmark();
+    if (dynamic_cast<BuiltInObject *>(res) != nullptr)
       break;
-    PrintTo(obj, &std::cout);
+    PrintTo(res, &std::cout);
+    GCManager::GetInstance().CollectGarbage();
     std::cout << "\n";
     std::getline(std::cin, expression);
   }
+  // std::ofstream debugFile;
+  // debugFile.open("debug.txt", std::ios::app);
+  // GCManager::GetInstance().PrintObjectsDebug(&debugFile);
+  // debugFile.flush();
   return 0;
 }

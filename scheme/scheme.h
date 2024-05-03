@@ -10,7 +10,7 @@ public:
 
   ~SchemeInterpreter();
 
-  std::shared_ptr<Object> Eval(std::shared_ptr<Object> in);
+  Object *Eval(Object *in);
 
 private:
   std::shared_ptr<Scope> global_scope_;
