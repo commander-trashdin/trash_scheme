@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "create.h"
 #include "gc.h"
+#include "tokenizer.h"
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -9,8 +10,9 @@
 #include <utility>
 #include <vector>
 
-Scope::~Scope() {
-  GCManager::GetInstance().RemoveRoot(this);
+Scope::~Scope() { GCManager::GetInstance().RemoveRoot(this); }
+
+void Scope::Release() {
   for (auto &[_, obj] : variables_)
     obj->Unmark();
 }
@@ -27,7 +29,8 @@ std::shared_ptr<Scope> Scope::Create(std::shared_ptr<Scope> &parent) {
   return newScope;
 }
 
-Object *Scope::Lookup(const std::string &name) {
+std::pair<Object *, std::shared_ptr<Scope>>
+Scope::Lookup(const std::string &name) {
   auto it = variables_.find(name);
   if (it == variables_.end()) {
     if (!parent_)
@@ -35,7 +38,7 @@ Object *Scope::Lookup(const std::string &name) {
     else
       return parent_->Lookup(name);
   }
-  return it->second;
+  return {it->second, shared_from_this()};
 }
 
 Object *&Scope::operator[](Symbol *symbol) {
@@ -238,7 +241,7 @@ void Symbol::PrintDebug(std::ostream *out) const {
 }
 
 Object *Symbol::Eval(std::shared_ptr<Scope> &scope) {
-  return scope->Lookup(name_);
+  return scope->Lookup(name_).first;
 }
 
 const std::string &Symbol::GetName() const { return name_; }
@@ -278,9 +281,7 @@ void SpecialForm::PrintDebug(std::ostream *out) const {
   *out << "#<special form " << name << ">" << std::endl;
 }
 
-Object *Function::Eval(std::shared_ptr<Scope> &) {
-  throw RuntimeError("can't eval function");
-}
+Object *Function::Eval(std::shared_ptr<Scope> &) { return this; }
 
 Object *SpecialForm::Eval(std::shared_ptr<Scope> &) {
   throw RuntimeError("can't eval function");
@@ -681,9 +682,9 @@ Object *Or(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
 
 Object *Define(std::shared_ptr<Scope> &scope,
                const std::vector<Object *> &args) {
-  SpecialForm::CheckArgs(args, Kind::Allow, 2);
-
   if (IsSymbol(args[0])) {
+    SpecialForm::CheckArgs(args, Kind::Allow, 2);
+
     (*scope)[AsSymbol(args[0])] = args[1]->Eval(scope);
   } else if (IsCell(args[0])) {
     auto lambda_args = ToVector(AsCell(args[0])->GetSecond());
@@ -702,9 +703,9 @@ Object *Set(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args) {
   SpecialForm::CheckArgs(args, Kind::Allow, 2);
 
   if (IsSymbol(args[0])) {
-    scope->Lookup(
+    auto [_, actual_scope] = scope->Lookup(
         AsSymbol(args[0])->GetName()); // For the sake of error checking
-    (*scope)[AsSymbol(args[0])] = args[1]->Eval(scope);
+    (*actual_scope)[AsSymbol(args[0])] = args[1]->Eval(scope);
   } else {
     throw RuntimeError("Trying to set something that is not a variable");
   }
@@ -729,6 +730,8 @@ Object *Lambda(std::shared_ptr<Scope> &scope,
   return fn;
 }
 
+void LambdaFunction::Release() { current_scope_->Release(); }
+
 void LambdaFunction::MarkRelated(GCMark mark) {
   for (auto &arg : args_)
     arg->Mark(mark);
@@ -748,7 +751,7 @@ Object *LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
   CheckArgs(args, Kind::Allow, args_.size());
 
   for (size_t ind = 0; ind < args.size(); ++ind)
-    (*current_scope_)[AsSymbol(args_[ind])] = args[ind]->Eval(scope);
+    (*current_scope_)[AsSymbol(args_[ind])] = args[ind]; //->Eval(scope);
 
   for (size_t ind = 0; ind < body_.size(); ++ind) {
     if (ind != body_.size() - 1)
@@ -805,13 +808,22 @@ Function *AsFunction(const Object *obj) {
                          : nullptr;
 }
 
-Object *ReadProper(Tokenizer *tokenizer) {
-  if (tokenizer->IsEnd())
+Parser::Parser(Tokenizer &&tok) : tokenizer_(tok) {}
+
+void Parser::ParenClose() {
+  paren_count_--;
+  if (paren_count_ < 0)
+    throw SyntaxError("Unexpected closing parentheses!");
+}
+void Parser::ParenOpen() { paren_count_++; }
+
+Object *Parser::ReadProper() {
+  if (tokenizer_.IsEnd())
     return nullptr;
 
-  auto current_object = tokenizer->GetToken();
+  auto current_object = tokenizer_.GetToken();
   if (SymbolToken *symbol = std::get_if<SymbolToken>(&current_object)) {
-    tokenizer->Next();
+    tokenizer_.Next();
     if (symbol->name == "#t")
       return Create<Boolean>(true);
     else if (symbol->name == "#f")
@@ -819,14 +831,14 @@ Object *ReadProper(Tokenizer *tokenizer) {
     return Create<Symbol>(symbol->name);
   } else if (ConstantToken *constant_tok =
                  std::get_if<ConstantToken>(&current_object)) {
-    tokenizer->Next();
+    tokenizer_.Next();
     return Create<Number, constant>(static_cast<int64_t>(constant_tok->value));
   } else if (std::holds_alternative<QuoteToken>(current_object)) {
-    tokenizer->Next();
+    tokenizer_.Next();
     auto new_cell = Create<Cell>();
     auto list = Create<Cell>();
     new_cell->SetFirst(Create<Symbol>("quote"));
-    list->SetFirst(ReadProper(tokenizer));
+    list->SetFirst(ReadProper());
     new_cell->SetSecond(list);
     return new_cell;
   } else if (std::holds_alternative<DotToken>(current_object)) {
@@ -834,38 +846,41 @@ Object *ReadProper(Tokenizer *tokenizer) {
   } else if (BracketToken *bracket =
                  std::get_if<BracketToken>(&current_object)) {
     if (*bracket == BracketToken::CLOSE)
-      throw SyntaxError("Unexpected closing parentheses");
+      ParenClose();
 
-    tokenizer->Next();
-    return ReadList(tokenizer);
+    ParenOpen();
+    tokenizer_.Next();
+    return ReadList();
   }
   throw SyntaxError("Unexpected symbol");
 }
 
-Object *ReadList(Tokenizer *tokenizer) {
-  if (tokenizer->IsEnd())
+Object *Parser::ReadList() {
+  if (tokenizer_.IsEnd())
     throw SyntaxError("Input not complete");
 
   Object *head = nullptr;
   Cell *tail = nullptr;
-  while (!tokenizer->IsEnd()) {
-    auto current_token = tokenizer->GetToken();
+  while (true) {
+    auto current_token = tokenizer_.GetToken();
     if (std::holds_alternative<BracketToken>(current_token) &&
         std::get<BracketToken>(current_token) == BracketToken::CLOSE) {
-      tokenizer->Next();
+      ParenClose();
+      if (paren_count_ != 0)
+        tokenizer_.Next();
       return head;
     } else if (std::holds_alternative<DotToken>(current_token)) {
-      tokenizer->Next();
+      tokenizer_.Next();
       if (tail == nullptr)
         throw SyntaxError("Improper list syntax");
 
-      tail->SetSecond(ReadProper(tokenizer));
-      if (!std::holds_alternative<BracketToken>(tokenizer->GetToken()) ||
-          std::get<BracketToken>(tokenizer->GetToken()) != BracketToken::CLOSE)
+      tail->SetSecond(ReadProper());
+      if (!std::holds_alternative<BracketToken>(tokenizer_.GetToken()) ||
+          std::get<BracketToken>(tokenizer_.GetToken()) != BracketToken::CLOSE)
         throw SyntaxError("Improper list syntax");
 
     } else {
-      auto current_object = ReadProper(tokenizer);
+      auto current_object = ReadProper();
       auto new_cell = Create<Cell>();
       new_cell->SetFirst(current_object);
       if (head == nullptr)
@@ -878,10 +893,7 @@ Object *ReadList(Tokenizer *tokenizer) {
   throw SyntaxError("Unmatched opening parentheses");
 }
 
-Object *Read(Tokenizer *tokenizer) {
-  auto obj = ReadProper(tokenizer);
-  if (!tokenizer->IsEnd())
-    throw SyntaxError("ImproperSyntax");
-
-  return obj;
+Object *Parser::Read() {
+  tokenizer_.Next();
+  return ReadProper();
 }

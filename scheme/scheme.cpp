@@ -2,6 +2,8 @@
 #include "create.h"
 #include "gc.h"
 #include "parser.h"
+#include "tokenizer.h"
+#include <istream>
 #include <memory>
 
 SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
@@ -81,4 +83,20 @@ std::vector<Object *> ToVector(const Object *head) {
     }
   }
   return elements;
+}
+
+void SchemeInterpreter::REPL(std::istream *in) {
+  Parser parser((Tokenizer(in)));
+  while (true) {
+    std::cout << "> ";
+    GCManager::GetInstance().SetPhase(Phase::Read);
+    auto obj = parser.Read();
+    GCManager::GetInstance().SetPhase(Phase::Eval);
+    auto res = Eval(obj);
+    if (dynamic_cast<BuiltInObject *>(res) != nullptr)
+      break;
+    PrintTo(res, &std::cout);
+
+    std::cout << "\n";
+  }
 }

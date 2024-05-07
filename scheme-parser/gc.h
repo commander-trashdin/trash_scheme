@@ -112,6 +112,9 @@ void  UnregisterObject(Object *obj) {
     // auto temp = std::move(objects_);
     auto cleaner = [](auto const &obj) {
       if (!obj->isMarked()) {
+        if (auto fn = Is<LambdaFunction>(obj); fn) {
+          fn->Release();
+        }
         delete obj;
         return true;
       } else {

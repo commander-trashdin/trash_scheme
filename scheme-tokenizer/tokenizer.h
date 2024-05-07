@@ -54,9 +54,7 @@ inline Token MakeLongToken(std::string symbols) {
 class Tokenizer {
 public:
   Tokenizer(std::istream *in)
-      : this_token_(NullToken()), working_stream_(in), last_token_(false) {
-    Next();
-  }
+      : this_token_(NullToken()), working_stream_(in), last_token_(false) {}
 
   bool IsEnd() { return last_token_; }
 

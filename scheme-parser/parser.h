@@ -3,6 +3,7 @@
 #include "../scheme-tokenizer/tokenizer.h"
 #include <concepts>
 #include <cstdint>
+#include <istream>
 #include <memory>
 #include <span>
 #include <stdexcept>
@@ -49,8 +50,9 @@ public:
   Scope() = default;
   explicit Scope(std::shared_ptr<Scope> &parent) : parent_(parent){};
   ~Scope();
+  void Release();
 
-  Object *Lookup(const std::string &name);
+  std::pair<Object *, std::shared_ptr<Scope>> Lookup(const std::string &name);
 
   Object *&operator[](Symbol *symbol);
 
@@ -265,6 +267,8 @@ public:
 
   void AddToBody(Object *form) { body_.push_back(form); }
 
+  void Release();
+
 private:
   std::shared_ptr<Scope> current_scope_;
   std::vector<Object *> args_;
@@ -294,6 +298,10 @@ inline void PrintTo(const Object *obj, std::ostream *out) {
 std::vector<Object *> ToVector(const Object *head);
 
 inline std::string Print(const Object *obj);
+
+template <DerivedFromObject Derived> Derived *Is(Object *obj) {
+  return dynamic_cast<Derived *>(obj);
+}
 
 bool IsNumber(const Object *obj);
 Number *AsNumber(const Object *obj);
@@ -389,11 +397,8 @@ Object *Exit(const std::vector<Object *> &args);
 
 Object *Map(const std::vector<Object *> &args);
 
-Object *ReadList(Tokenizer *tok);
-Object *Read(Tokenizer *tok);
-Object *ReadProper(Tokenizer *tok);
+// Object* Load(const std::vector<Object*> &args);
 
-/*
 class Parser {
 public:
   explicit Parser(Tokenizer &&tok);
@@ -405,7 +410,9 @@ public:
   Object *ReadProper();
 
 private:
+  void ParenClose();
+  void ParenOpen();
   Tokenizer tokenizer_;
   std::unordered_map<std::string_view, Symbol *> sym_table_;
+  int64_t paren_count_ = 0;
 };
-*/
