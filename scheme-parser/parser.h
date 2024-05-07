@@ -1,32 +1,50 @@
 #pragma once
 
 #include "../scheme-tokenizer/tokenizer.h"
-#include "gc.h"
+#include <concepts>
+#include <cstdint>
 #include <memory>
+#include <span>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 enum class Types { tType, cellType, numberType, symbolType };
 
 enum class Kind { Allow, Disallow };
-
+class Object;
 class Symbol;
+class Number;
+class Boolean;
+class GCManager;
+
+struct constant {};
+
+template <typename Derived>
+concept DerivedFromObject = std::derived_from<Derived, Object>;
+
+template <typename Tag>
+concept ConstTag =
+    std::is_same_v<Tag, void> || std::is_same_v<Tag, struct constant>;
+
+template <typename Derived>
+concept NumberOrSymbol =
+    std::is_same_v<Derived, Number> || std::is_same_v<Derived, Symbol>;
+
+template <typename Derived, typename Tag>
+concept Creatable =
+    (std::is_same_v<Tag, constant> && NumberOrSymbol<Derived>) ||
+    !std::is_same_v<Tag, constant>;
 
 class Scope : public std::enable_shared_from_this<Scope> {
 public:
-  static std::shared_ptr<Scope> Create() {
-    std::shared_ptr<Scope> newScope = std::make_shared<Scope>();
-    GCManager::GetInstance().AddRoot(newScope);
-    return newScope;
-  }
+  static std::shared_ptr<Scope> Create();
 
-  static std::shared_ptr<Scope> Create(std::shared_ptr<Scope> &parent) {
-    std::shared_ptr<Scope> newScope = std::make_shared<Scope>(parent);
-    GCManager::GetInstance().AddRoot(newScope);
-    return newScope;
-  }
+  static std::shared_ptr<Scope> Create(std::shared_ptr<Scope> &parent);
 
   Scope() = default;
   explicit Scope(std::shared_ptr<Scope> &parent) : parent_(parent){};
@@ -42,23 +60,22 @@ public:
 
 class Object {
 public:
-  Object() = default;
+  enum class GCMark : int { White = 0, Black = 1, Safe = 2 };
 
-  template <class Derived, typename... Args>
-  static Derived *Create(Args &&...args) {
-    Derived *obj = new Derived(std::forward<Args>(args)...);
-    GCManager::GetInstance().RegisterObject(obj);
-    return obj;
+  friend bool operator<(GCMark a, GCMark b) {
+    return static_cast<int>(a) < static_cast<int>(b);
   }
+
+  Object() = default;
 
   virtual ~Object();
 
-  void Mark();
-  void Unmark();
+  void Mark(GCMark mark = GCMark::Black);
+  void Unmark(GCMark mark = GCMark::Black);
   bool isMarked() const;
 
-  virtual void MarkRelated();
-  virtual void UnmarkRelated();
+  virtual void MarkRelated(GCMark mark = GCMark::Black);
+  virtual void UnmarkRelated(GCMark mark = GCMark::Black);
 
   virtual Types ID() const;
 
@@ -70,7 +87,7 @@ public:
   virtual Object *Eval(std::shared_ptr<Scope> &scope) = 0;
 
 private:
-  bool marked_ = false;
+  GCMark marked_ = GCMark::Black;
 };
 
 class BuiltInObject : public Object {
@@ -89,8 +106,8 @@ public:
 
   Cell(Object *head, Object *tail);
 
-  virtual void MarkRelated() override;
-  virtual void UnmarkRelated() override;
+  virtual void MarkRelated(GCMark mark = GCMark::Black) override;
+  virtual void UnmarkRelated(GCMark mark = GCMark::Black) override;
 
   virtual Types ID() const override;
 
@@ -114,6 +131,9 @@ private:
 
 class Number : public Object {
 public:
+  using ValueType = int64_t;
+  static std::unordered_map<ValueType, Number *> *GetConstantRegistry();
+
   Number();
 
   explicit Number(int64_t value);
@@ -135,7 +155,7 @@ private:
 
 class SpecialForm : public Object {
 public:
-  using ApplyMethod = Object *(*)(std::shared_ptr<Scope> &,
+  using ApplyMethod = Object *(*)(std::shared_ptr<Scope> &scope,
                                   const std::vector<Object *> &);
 
   SpecialForm(const std::string &&name, ApplyMethod &&apply_method);
@@ -160,6 +180,10 @@ protected:
 
 class Symbol : public Object {
 public:
+  using ValueType = std::string_view;
+
+  static std::unordered_map<std::string_view, Symbol *> *GetConstantRegistry();
+
   Symbol();
 
   explicit Symbol(std::string name);
@@ -181,6 +205,8 @@ protected:
 
 class Boolean : public Symbol {
 public:
+  using ValueType = bool;
+
   Boolean();
 
   explicit Boolean(bool val);
@@ -192,8 +218,7 @@ public:
 
 class Function : public Object {
 public:
-  using ApplyMethod = Object *(*)(std::shared_ptr<Scope> &,
-                                  const std::vector<Object *> &);
+  using ApplyMethod = Object *(*)(const std::vector<Object *> &);
 
   Function(const std::string &&name, ApplyMethod &&apply_method);
 
@@ -217,9 +242,13 @@ protected:
 
 class LambdaFunction : public Function {
 public:
-  LambdaFunction() : Function("", nullptr){};
-  virtual void MarkRelated() override;
-  virtual void UnmarkRelated() override;
+  LambdaFunction(std::shared_ptr<Scope> scope, std::vector<Object *> &&args,
+                 std::span<Object *const> body)
+      : Function("", nullptr), current_scope_(scope), args_(args),
+        body_(body.begin(), body.end()) {}
+
+  virtual void MarkRelated(GCMark mark = GCMark::Black) override;
+  virtual void UnmarkRelated(GCMark mark = GCMark::Black) override;
 
   Object *Apply(std::shared_ptr<Scope> &scope,
                 const std::vector<Object *> &args) override;
@@ -275,81 +304,74 @@ Cell *AsCell(const Object *obj);
 bool IsSymbol(const Object *obj);
 Symbol *AsSymbol(const Object *obj);
 
-Object *ReadList(Tokenizer *tokenizer);
-
-Object *Read(Tokenizer *tokenizer);
-
 bool IsCell(const Object *obj);
 Cell *AsCell(const Object *obj);
 
+bool IsFunction(const Object *obj);
+Function *AsFunction(const Object *obj);
+
 Object *Quote(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
 
-Object *Plus(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Plus(const std::vector<Object *> &args);
 
-Object *Minus(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Minus(const std::vector<Object *> &args);
 
-Object *Multiply(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Multiply(const std::vector<Object *> &args);
 
-Object *Divide(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Divide(const std::vector<Object *> &args);
 
 Object *If(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
 
-Object *CheckNull(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *CheckNull(const std::vector<Object *> &args);
 
-Object *CheckPair(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *CheckPair(const std::vector<Object *> &args);
 
-Object *CheckNumber(std::shared_ptr<Scope> &,
-                    const std::vector<Object *> &args);
-Object *CheckBoolean(std::shared_ptr<Scope> &,
-                     const std::vector<Object *> &args);
+Object *CheckNumber(const std::vector<Object *> &args);
+Object *CheckBoolean(const std::vector<Object *> &args);
 
-Object *CheckSymbol(std::shared_ptr<Scope> &,
-                    const std::vector<Object *> &args);
+Object *CheckSymbol(const std::vector<Object *> &args);
 
-Object *CheckList(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *CheckList(const std::vector<Object *> &args);
 
 // FIXME
-Object *Eq(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Eq(const std::vector<Object *> &args);
 // FIXME
-Object *Equal(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
-Object *IntegerEqual(std::shared_ptr<Scope> &,
-                     const std::vector<Object *> &args);
+Object *Equal(const std::vector<Object *> &args);
+Object *IntegerEqual(const std::vector<Object *> &args);
 
-Object *Not(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Not(const std::vector<Object *> &args);
 
-Object *Equality(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Equality(const std::vector<Object *> &args);
 
-Object *More(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *More(const std::vector<Object *> &args);
 
-Object *Less(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Less(const std::vector<Object *> &args);
 
-Object *MoreOrEqual(std::shared_ptr<Scope> &,
-                    const std::vector<Object *> &args);
+Object *MoreOrEqual(const std::vector<Object *> &args);
 
-Object *LessOrEqual(std::shared_ptr<Scope> &,
-                    const std::vector<Object *> &args);
+Object *LessOrEqual(const std::vector<Object *> &args);
 
-Object *Min(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Min(const std::vector<Object *> &args);
 
-Object *Max(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Max(const std::vector<Object *> &args);
 
-Object *Abs(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Abs(const std::vector<Object *> &args);
 
-Object *Cons(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Cons(const std::vector<Object *> &args);
 
-Object *Car(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Car(const std::vector<Object *> &args);
 
-Object *Cdr(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Cdr(const std::vector<Object *> &args);
 
-Object *SetCar(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *SetCar(const std::vector<Object *> &args);
 
-Object *SetCdr(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *SetCdr(const std::vector<Object *> &args);
 
-Object *List(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *List(const std::vector<Object *> &args);
 
-Object *ListRef(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *ListRef(const std::vector<Object *> &args);
 
-Object *ListTail(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *ListTail(const std::vector<Object *> &args);
 
 Object *And(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
 
@@ -363,4 +385,27 @@ Object *Set(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
 Object *Lambda(std::shared_ptr<Scope> &scope,
                const std::vector<Object *> &args);
 
-Object *Exit(std::shared_ptr<Scope> &, const std::vector<Object *> &args);
+Object *Exit(const std::vector<Object *> &args);
+
+Object *Map(const std::vector<Object *> &args);
+
+Object *ReadList(Tokenizer *tok);
+Object *Read(Tokenizer *tok);
+Object *ReadProper(Tokenizer *tok);
+
+/*
+class Parser {
+public:
+  explicit Parser(Tokenizer &&tok);
+
+  Object *ReadList();
+
+  Object *Read();
+
+  Object *ReadProper();
+
+private:
+  Tokenizer tokenizer_;
+  std::unordered_map<std::string_view, Symbol *> sym_table_;
+};
+*/

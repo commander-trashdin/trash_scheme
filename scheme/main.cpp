@@ -12,14 +12,17 @@ int main() {
   while (true) {
     std::stringstream ss{expression};
     Tokenizer tokenizer{&ss};
+    GCManager::GetInstance().SetPhase(Phase::Read);
     auto obj = Read(&tokenizer);
-    obj->Mark();
+    // obj->Mark();
+    GCManager::GetInstance().SetPhase(Phase::Eval);
     auto res = sch_int.Eval(obj);
-    obj->Unmark();
+    // obj->Unmark();
     if (dynamic_cast<BuiltInObject *>(res) != nullptr)
       break;
     PrintTo(res, &std::cout);
-    GCManager::GetInstance().CollectGarbage();
+
+    // GCManager::GetInstance().CollectGarbage();
     std::cout << "\n";
     std::getline(std::cin, expression);
   }
