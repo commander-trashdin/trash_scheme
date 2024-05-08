@@ -5,15 +5,10 @@
 #include <variant>
 
 struct SymbolToken {
-  SymbolToken(std::string new_name) : name(new_name) {
-    if (name == "+" || name == "-" || name == "*") {
-      IsExceptional = true;
-    }
-  }
+  SymbolToken(std::string new_name) : name(new_name) {}
   bool operator==(const SymbolToken &rhs) const { return (name == rhs.name); }
 
   std::string name;
-  bool IsExceptional = false;
 };
 
 struct QuoteToken {
@@ -64,9 +59,6 @@ public:
     std::string accum_token;
 
     if (working_stream_->peek() == EOF) {
-      if (!accum_token.empty()) {
-        RecordLongToken(&accum_token);
-      }
       last_token_ = true;
     }
     while (working_stream_->peek() != EOF) {
@@ -146,8 +138,8 @@ public:
         }
       }
     }
-    if (!accum_token.empty())
-      RecordLongToken(&accum_token);
+    // if (!accum_token.empty())
+    //  RecordLongToken(&accum_token);
     if (std::get_if<NullToken>(&this_token_) != nullptr)
       last_token_ = true;
   }
