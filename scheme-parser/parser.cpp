@@ -821,7 +821,7 @@ Object *Parser::ReadProper() {
   if (tokenizer_.IsEnd())
     return nullptr;
 
-  auto current_object = tokenizer_.GetToken();
+  auto current_object = tokenizer_.GetToken().value();
   if (SymbolToken *symbol = std::get_if<SymbolToken>(&current_object)) {
     tokenizer_.Next();
     if (symbol->name == "#t")

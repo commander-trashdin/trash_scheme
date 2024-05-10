@@ -1,17 +1,11 @@
 #pragma once
 
-#include "parser.h"
-#include <algorithm>
-#include <cstdint>
-#include <iostream>
-#include <memory>
-#include <ostream>
-#include <string>
-#include <string_view>
-#include <unordered_map>
+#include "../scheme-internals/cell.h"
+#include "../scheme-internals/function.h"
+#include "../scheme-internals/number.h"
+#include "../scheme-internals/specialform.h"
+#include "../scheme-internals/symbol.h"
 #include <unordered_set>
-#include <utility>
-#include <vector>
 
 enum class Phase { Read, Eval };
 
@@ -162,14 +156,13 @@ void  UnregisterObject(Object *obj) {
 
 private:
   Phase phase_ = Phase::Read;
-  std::unordered_set<Object *> objects_;
+  std::unordered_set<GCTracked *> objects_;
   std::unordered_set<Scope *> roots_;
-  std::unordered_set<Object *> return_;
+  std::unordered_set<GCTracked *> return_;
   const size_t threshold_ = 32;
   size_t currentMemoryUsage_ = 0;
-  std::unordered_map<int64_t, Number *> constant_numbers_;
-  const std::pair<Boolean, Boolean> bools_ = {Boolean(true), Boolean(false)};
-  std::unordered_map<std::string_view, Symbol *> constant_symbols_;
+  std::unordered_map<int64_t, GCTracked *> constant_numbers_;
+  std::unordered_map<std::string_view, GCTracked *> constant_symbols_;
 
   GCManager() {}
   ~GCManager() {
@@ -188,3 +181,43 @@ private:
   GCManager(const GCManager &) = delete;
   GCManager &operator=(const GCManager &) = delete;
 };
+
+union T {
+  Number n;
+  Symbol s;
+  Boolean b;
+  Function f;
+  LambdaFunction lf;
+  Cell c;
+  SpecialForm sf;
+};
+
+class GCTracked {
+  enum class GCMark : int { White = 0, Black = 1, Safe = 2 };
+
+  friend bool operator<(GCMark a, GCMark b) {
+    return static_cast<int>(a) < static_cast<int>(b);
+  }
+
+private:
+  T storage_;
+  Object *obj_ptr_;
+  GCMark mark_;
+};
+
+template <DerivedFromObject Derived, ConstTag Tag = void, typename... Args>
+  requires Creatable<Derived, Tag>
+Derived *Create(Args &&...args) {
+  if constexpr (std::is_same_v<Tag, void>) {
+    auto obj = new Derived(std::forward<Args>(args)...);
+    GCManager::GetInstance().RegisterObject(obj);
+    return obj;
+  } else
+    return GCManager::GetInstance().GetConstant<Derived>(
+        std::forward<Args>(args)...);
+}
+
+template <ConstTag Tag, typename... Args> Boolean *Create(Args &&...args) {
+  return const_cast<Boolean *>(
+      GCManager::GetInstance().GetBool(std::forward<Args>(args)...));
+}

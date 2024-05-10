@@ -1,7 +1,15 @@
 #pragma once
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <iostream>
+#include <iterator>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 
 struct SymbolToken {
@@ -11,148 +19,96 @@ struct SymbolToken {
   std::string name;
 };
 
-struct QuoteToken {
-  bool operator==(const QuoteToken &) const { return true; }
+enum class SyntaxToken { Quote, Dot, Null, ParenOpen, ParenClose };
+
+struct NumberToken {
+  explicit NumberToken(int64_t number) : value(number) {}
+  bool operator==(const NumberToken &rhs) const { return (value == rhs.value); }
+
+  int64_t value;
 };
 
-struct DotToken {
-  bool operator==(const DotToken &) const { return true; }
-};
+using Token = std::variant<SymbolToken, NumberToken, SyntaxToken>;
 
-struct NullToken {
-  bool operator==(const NullToken &) const { return true; }
-};
-
-enum class BracketToken { OPEN, CLOSE };
-
-struct ConstantToken {
-  ConstantToken(int number) : value(number) {}
-  bool operator==(const ConstantToken &rhs) const {
-    return (value == rhs.value);
+inline Token Tokenize_special(char ch) {
+  switch (ch) {
+  case '(':
+    return SyntaxToken::ParenOpen;
+  case ')':
+    return SyntaxToken::ParenClose;
+  case '\'':
+    return SyntaxToken::Quote;
+  case '.':
+    return SyntaxToken::Dot;
+  case '*':
+  case '/':
+    return SymbolToken({ch});
+  default:
+    std::unreachable();
   }
+}
 
-  int value;
-};
-
-using Token = std::variant<SymbolToken, ConstantToken, BracketToken, DotToken,
-                           QuoteToken, NullToken>;
-
-inline Token MakeLongToken(std::string symbols) {
+inline Token MakeLongToken(std::string &&symbols) {
   if (isdigit(symbols.at(0)) ||
       ((symbols.at(0) == '-' || symbols.at(0) == '+') && symbols.length() > 1 &&
-       isdigit(symbols.at(1)))) {
-    return ConstantToken(std::stoi(symbols));
+       std::all_of(std::next(symbols.begin()), symbols.end(), isdigit))) {
+    return NumberToken(std::stol(symbols));
   }
   return SymbolToken(symbols);
 }
 
 class Tokenizer {
 public:
-  Tokenizer(std::istream *in)
-      : this_token_(NullToken()), working_stream_(in), last_token_(false) {}
+  Tokenizer(std::istream *in) : working_stream_(in) {}
 
-  bool IsEnd() { return last_token_; }
+  bool IsEnd() { return cur_ == EOF; }
 
   void Next() {
-    this_token_ = NullToken();
-    char cur;
+    if (IsEnd())
+      return;
+
+    this_token_.reset();
     std::string accum_token;
 
-    if (working_stream_->peek() == EOF) {
-      last_token_ = true;
-    }
-    while (working_stream_->peek() != EOF) {
-      cur = working_stream_->peek();
-      if (cur == '(') {
+    for (; !IsEnd(); Step()) {
+      if (cur_ == '(' || cur_ == ')' || cur_ == '.' || cur_ == '*' ||
+          cur_ == '/' || cur_ == '\'') {
         if (accum_token.empty()) {
-          this_token_ = BracketToken::OPEN;
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
+          this_token_ = Tokenize_special(cur_);
+          return Step();
         }
-        break;
-      } else if (cur == ' ' || cur == '\n') {
-        if (accum_token.empty()) {
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
-          working_stream_->get();
-          break;
+        return RecordLongToken(std::move(accum_token));
+      } else if (std::isspace(cur_) && !accum_token.empty()) {
+        Step();
+        return RecordLongToken(std::move(accum_token));
+      } else if (isalnum(cur_) || cur_ == '?' || cur_ == '!' || cur_ == '#' ||
+                 cur_ == '>' || cur_ == '<' || cur_ == '=') {
+        accum_token.push_back(cur_);
+      } else if (cur_ == '-' || cur_ == '+') {
+        if (accum_token.empty() && !isdigit(Peek())) {
+          this_token_ = SymbolToken({cur_});
+          return Step();
         }
-      } else if (cur == ')') {
-        if (accum_token.empty()) {
-          this_token_ = BracketToken::CLOSE;
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
-        }
-        break;
-      } else if (cur == '\'') {
-        if (accum_token.empty()) {
-          this_token_ = QuoteToken();
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
-        }
-        break;
-      } else if (cur == '.') {
-        if (accum_token.empty()) {
-          this_token_ = DotToken();
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
-        }
-        break;
-      } else if (isdigit(cur) || isalpha(cur) || cur == '?' || cur == '!' ||
-                 cur == '#' || cur == '>' || cur == '<' || cur == '=') {
-        accum_token += cur;
-        working_stream_->get();
-      } else if (cur == '*' || cur == '/') {
-        if (accum_token.empty()) {
-          std::string s(1, cur);
-          this_token_ = SymbolToken(s);
-          working_stream_->get();
-        } else {
-          RecordLongToken(&accum_token);
-        }
-        break;
-      } else if (cur == '-' || cur == '+') {
-        if (accum_token.empty()) {
-          working_stream_->get();
-          if (!isdigit(working_stream_->peek())) {
-            std::string s(1, cur);
-            this_token_ = SymbolToken(s);
-            accum_token.clear();
-            break;
-          } else {
-            accum_token += cur;
-          }
-        } else {
-          if (isalpha(accum_token.at(0))) {
-            working_stream_->get();
-            accum_token += cur;
-          } else {
-            RecordLongToken(&accum_token);
-            break;
-          }
-        }
+        if (!isalpha(accum_token.at(0)))
+          return RecordLongToken(std::move(accum_token));
+        accum_token.push_back(cur_);
       }
     }
-    // if (!accum_token.empty())
-    //  RecordLongToken(&accum_token);
-    if (std::get_if<NullToken>(&this_token_) != nullptr)
-      last_token_ = true;
+    if (!accum_token.empty())
+      RecordLongToken(std::move(accum_token));
   }
 
-  Token GetToken() { return this_token_; }
+  std::optional<Token> GetToken() { return this_token_; }
 
 private:
-  void RecordLongToken(std::string *accum_token) {
-    this_token_ = MakeLongToken(*accum_token);
-    accum_token->clear();
+  void RecordLongToken(std::string &&accum_token) {
+    this_token_ = MakeLongToken(std::move(accum_token));
   }
 
-  Token this_token_;
+  char Peek() { return cur_; }
+  void Step() { cur_ = working_stream_->get(); }
+
+  std::optional<Token> this_token_ = std::nullopt;
   std::istream *working_stream_;
-  bool last_token_;
+  char cur_;
 };
