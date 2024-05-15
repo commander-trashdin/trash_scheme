@@ -1,58 +1,83 @@
 #include "scheme.h"
-#include "create.h"
+#include "builtins.h"
 #include "gc.h"
+#include "interfaces.h"
 #include "parser.h"
+#include "symbol.h"
 #include "tokenizer.h"
 #include <istream>
 #include <memory>
+#include <vector>
 
 SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
-  global_scope_->variables_["+"] = Create<Function>("+", Plus);
-  global_scope_->variables_["-"] = Create<Function>("-", Minus);
-  global_scope_->variables_["*"] = Create<Function>("*", Multiply);
-  global_scope_->variables_["/"] = Create<Function>("/", Divide);
-  global_scope_->variables_["if"] = Create<SpecialForm>("if", If);
-  global_scope_->variables_["quote"] = Create<SpecialForm>("quote", Quote);
-  global_scope_->variables_["null?"] = Create<Function>("null?", CheckNull);
-  global_scope_->variables_["pair?"] = Create<Function>("pair?", CheckPair);
-  global_scope_->variables_["number?"] =
-      Create<Function>("number?", CheckNumber);
-  global_scope_->variables_["boolean?"] =
-      Create<Function>("boolean?", CheckBoolean);
-  global_scope_->variables_["symbol?"] =
-      Create<Function>("symbol?", CheckSymbol);
-  global_scope_->variables_["list?"] = Create<Function>("list?", CheckList);
-  global_scope_->variables_["eq?"] = Create<Function>("eq?", Eq);
-  global_scope_->variables_["integer-equal?"] =
-      Create<Function>("integer-equal?", IntegerEqual);
-  global_scope_->variables_["not"] = Create<Function>("not", Not);
-  global_scope_->variables_["="] = Create<Function>("=", Equality);
-  global_scope_->variables_[">"] = Create<Function>(">", More);
-  global_scope_->variables_["<"] = Create<Function>("<", Less);
-  global_scope_->variables_[">="] = Create<Function>(">=", MoreOrEqual);
-  global_scope_->variables_["<="] = Create<Function>("<=", LessOrEqual);
-  global_scope_->variables_["min"] = Create<Function>("min", Min);
-  global_scope_->variables_["max"] = Create<Function>("max", Max);
-  global_scope_->variables_["abs"] = Create<Function>("abs", Abs);
-  global_scope_->variables_["cons"] = Create<Function>("cons", Cons);
-  global_scope_->variables_["car"] = Create<Function>("car", Car);
-  global_scope_->variables_["cdr"] = Create<Function>("cdr", Cdr);
-  global_scope_->variables_["set-car!"] = Create<Function>("set-car!", SetCar);
-  global_scope_->variables_["set-cdr!"] = Create<Function>("set-cdr!", SetCdr);
-  global_scope_->variables_["list"] = Create<Function>("list", List);
-  global_scope_->variables_["list-ref"] = Create<Function>("list-ref", ListRef);
-  global_scope_->variables_["list-tail"] =
-      Create<Function>("list-tail", ListTail);
-  global_scope_->variables_["and"] = Create<SpecialForm>("and", And);
-  global_scope_->variables_["or"] = Create<SpecialForm>("or", Or);
-  global_scope_->variables_["lambda"] = Create<SpecialForm>("lambda", Lambda);
-  global_scope_->variables_["define"] = Create<SpecialForm>("define", Define);
-  global_scope_->variables_["set!"] = Create<SpecialForm>("set!", Set);
-  global_scope_->variables_["exit"] = Create<Function>("exit", Exit);
-  global_scope_->variables_["map"] = Create<Function>("map", Map);
+  RegisterGlobalFn("+", Types::number, Plus);
+  RegisterGlobalFn("-", Types::number, Minus);
+  RegisterGlobalFn("*", Types::number, Multiply);
+  RegisterGlobalFn("/", Types::number, Divide);
+  RegisterSF("if", If, 2, 3);
+  RegisterSF("quote", Quote, 1, 1);
+  std::vector<Types> v = {Types::t};
+  RegisterGlobalFn("null?", v, CheckNull);
+  RegisterGlobalFn("pair?", v, CheckPair);
+  RegisterGlobalFn("number?", v, CheckNumber);
+  RegisterGlobalFn("boolean?", v, CheckBoolean);
+  RegisterGlobalFn("symbol?", v, CheckSymbol);
+  RegisterGlobalFn("list?", v, CheckList);
+  v = {Types::t, Types::t};
+  RegisterGlobalFn("eq?", v, Eq);
+  RegisterGlobalFn("eql?", v, Eql);
+  v = {Types::t};
+  RegisterGlobalFn("not", v, Not);
+  v = {Types::number, Types::number};
+  RegisterGlobalFn(">", v, More);
+  RegisterGlobalFn("<", v, Less);
+  RegisterGlobalFn(">=", v, MoreOrEqual);
+  RegisterGlobalFn("<=", v, LessOrEqual);
+  RegisterGlobalFn("min", Types::number, Min);
+  RegisterGlobalFn("max", Types::number, Max);
+  v = {Types::t, Types::t};
+  RegisterGlobalFn("cons", v, Cons);
+  v = {Types::cell};
+  RegisterGlobalFn("car", v, Car);
+  RegisterGlobalFn("cdr", v, Cdr);
+  v = {Types::cell, Types::t};
+  RegisterGlobalFn("set-car!", v, SetCar);
+  RegisterGlobalFn("set-cdr!", v, SetCdr);
+  RegisterGlobalFn("list", Types::t, List);
+  v = {Types::cell, Types::number};
+  RegisterGlobalFn("list-ref", v, ListRef);
+  RegisterGlobalFn("list-tail", Types::cell, ListRef);
+  RegisterSF("and", And);
+  RegisterSF("or", Or);
+  RegisterSF("lambda", Lambda);
+  RegisterSF("define", Define, 2, 2);
+  RegisterSF("set!", Set, 2, 2);
+  v = {Types::t};
+  RegisterGlobalFn("eval", v, ::Eval);
+  v = {Types::function, Types::cell};
+  RegisterGlobalFn("map", v, Map);
+
+  // global_scope_->variables_["exit"] = Create<Function>("exit", Exit);
 }
 
 SchemeInterpreter::~SchemeInterpreter() { global_scope_->variables_.clear(); }
+
+void SchemeInterpreter::RegisterGlobalFn(
+    const std::string &name, std::variant<Types, std::vector<Types>> arg_types,
+    GCTracked *(*fn)(std::shared_ptr<Scope> &,
+                     const std::vector<GCTracked *> &)) {
+  auto func = Create<Function>(name, arg_types, fn);
+  (*global_scope_)[Create<Symbol, constant>(name)] = func;
+}
+
+void SchemeInterpreter::RegisterSF(
+    const std::string &name,
+    GCTracked *(*sf)(std::shared_ptr<Scope> &,
+                     const std::vector<GCTracked *> &),
+    std::optional<size_t> arg_min, std::optional<size_t> arg_max) {
+  auto sform = Create<SpecialForm>(name, sf, arg_min, arg_max);
+  (*global_scope_)[Create<Symbol, constant>(name)] = sform;
+}
 
 Object *SchemeInterpreter::Eval(Object *in) {
   if (in == nullptr)

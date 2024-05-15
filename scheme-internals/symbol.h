@@ -5,11 +5,15 @@ class Symbol : public Object {
 public:
   using ValueType = std::string_view;
 
+  static Symbol *AllocIn(T *storage);
+  static std::unordered_map<int64_t, GCTracked *> *GetConstantRegistry();
   explicit Symbol(std::string name);
 
   virtual Types ID() const override;
 
   virtual void PrintTo(std::ostream *out) const override;
+
+  virtual bool operator==(const Object &other) const override;
 
   const std::string &GetName() const;
 
@@ -21,9 +25,13 @@ class Boolean : public Symbol {
 public:
   using ValueType = bool;
 
-  explicit Boolean(bool val) : Symbol(val ? "#t" : "#f"), val_(val) {}
+  static Boolean *AllocIn(T *storage);
+  virtual Types ID() const override;
+  explicit Boolean(bool val);
 
   bool IsFalse() const override;
+
+  virtual bool operator==(const Object &other) const override;
 
 private:
   const bool val_;

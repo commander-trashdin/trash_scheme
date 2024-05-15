@@ -1,24 +1,27 @@
 #pragma once
 #include "interfaces.h"
+#include <cstddef>
+#include <optional>
 
 class SpecialForm : public Object, public Applicable {
 public:
-  using ApplyMethod = Object *(*)(std::shared_ptr<Scope> &scope,
-                                  const std::vector<Object *> &);
+  using ApplyMethod = GCTracked *(*)(std::shared_ptr<Scope> &scope,
+                                     const std::vector<GCTracked *> &);
 
-  SpecialForm(const std::string &&name, ApplyMethod &&apply_method);
+  static SpecialForm *AllocIn(T *storage);
+
+  SpecialForm(const std::string &&name, ApplyMethod &&apply_method,
+              std::optional<size_t> arg_min = std::nullopt,
+              std::optional<size_t> arg_max = std::nullopt);
 
   void PrintTo(std::ostream *out) const override;
 
-  virtual Object *Apply(std::shared_ptr<Scope> &scope,
-                        GCTracked *args) override;
-
-  template <typename... Sizes>
-  static void CheckArgs(const std::vector<Object *> &args, Kind kind,
-                        Sizes... sizes);
+  virtual GCTracked *Apply(std::shared_ptr<Scope> &scope,
+                           GCTracked *args) override;
 
 protected:
-  const std::string name;
-
-  const ApplyMethod apply_method;
+  const std::string name_;
+  std::optional<size_t> arg_min_;
+  std::optional<size_t> arg_max_;
+  const ApplyMethod apply_method_;
 };

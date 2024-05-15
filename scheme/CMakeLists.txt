@@ -1,11 +1,19 @@
 # Main executable
+# Main executable
 add_executable(scheme main.cpp scheme.cpp)
-set_target_properties(scheme PROPERTIES ENABLE_EXPORTS ON)
-target_include_directories(scheme PUBLIC "${PROJECT_SOURCE_DIR}")
 
-# Link with parser and tokenizer libraries
-target_link_libraries(scheme scheme_parser)
-target_link_libraries(scheme scheme_tokenizer)
+# Include directories
+target_include_directories(scheme PRIVATE 
+    ${CMAKE_SOURCE_DIR}/gc
+    ${CMAKE_SOURCE_DIR}/scheme-tokenizer
+    ${CMAKE_SOURCE_DIR}/scheme-parser
+    ${CMAKE_SOURCE_DIR}/scheme-internals
+)
 
-# Tests
-# add_subdirectory(test)
+# Link libraries
+target_link_libraries(scheme PRIVATE 
+    gc
+    scheme_tokenizer
+    scheme_parser
+    scheme_internals
+)

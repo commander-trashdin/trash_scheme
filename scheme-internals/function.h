@@ -1,53 +1,59 @@
 #pragma once
 #include "interfaces.h"
+#include <optional>
+#include <span>
+#include <variant>
+#include <vector>
+
+struct BuiltInFunction {};
 
 class Function : public Object, public Applicable {
 public:
-  using ApplyMethod = Object *(*)(const std::vector<Object *> &);
-
-  Function(const std::string &&name, ApplyMethod &&apply_method);
+  using ApplyMethod = GCTracked *(*)(std::shared_ptr<Scope> &scope,
+                                     const std::vector<GCTracked *> &);
+  static Function *AllocIn(T *storage);
+  Function(const std::string &&name,
+           std::variant<Types, std::vector<Types>> arg_types,
+           ApplyMethod &&apply_method);
 
   void PrintTo(std::ostream *out) const override;
 
-  virtual Object *Apply(std::shared_ptr<Scope> &scope,
-                        GCTracked *args) override;
+  virtual GCTracked *Apply(std::shared_ptr<Scope> &scope,
+                           GCTracked *args) override;
 
-  template <typename... Sizes>
-  static void CheckArgs(const std::vector<Object *> &args, Kind kind,
-                        Sizes... sizes);
+  std::optional<Types> ArgType(size_t index);
 
 protected:
   std::string name;
+  std::variant<Types, std::vector<Types>> arg_types_;
 
   const ApplyMethod apply_method;
 };
 
 class LambdaFunction : public Object, public Applicable {
 public:
-  LambdaFunction(std::shared_ptr<Scope> scope, std::vector<Object *> &&args,
-                 std::span<Object *const> body)
-      : current_scope_(scope), args_(args), body_(body.begin(), body.end()) {}
+  LambdaFunction(std::shared_ptr<Scope> scope, std::vector<GCTracked *> &&args,
+                 std::span<GCTracked *const> body);
 
-  Object *Apply(std::shared_ptr<Scope> &scope, GCTracked *args) override;
+  static LambdaFunction *AllocIn(T *storage);
+  GCTracked *Apply(std::shared_ptr<Scope> &scope, GCTracked *args) override;
 
   void PrintTo(std::ostream *out) const override;
 
-  std::shared_ptr<Scope> GetScope() { return current_scope_; }
+  std::shared_ptr<Scope> GetScope();
 
-  void SetScope(const std::shared_ptr<Scope> &scope) { current_scope_ = scope; }
+  void SetScope(const std::shared_ptr<Scope> &scope);
 
-  std::vector<Object *> GetArgs() { return args_; }
+  std::vector<GCTracked *> GetArgs();
 
-  void SetArgs(std::vector<Object *> args) { args_ = args; }
+  void SetArgs(std::vector<GCTracked *> args);
 
-  std::vector<Object *> GetBody() { return body_; }
+  std::vector<GCTracked *> GetBody();
 
-  void AddToBody(Object *form) { body_.push_back(form); }
-
-  void Release();
+  void AddToBody(GCTracked *form);
 
 private:
   std::shared_ptr<Scope> current_scope_;
-  std::vector<Object *> args_;
-  std::vector<Object *> body_;
+  std::vector<GCTracked *> args_;
+  std::vector<GCTracked *> body_;
 };

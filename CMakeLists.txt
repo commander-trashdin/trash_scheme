@@ -1,20 +1,25 @@
 cmake_minimum_required(VERSION 3.10)
 project(SchemeInterpreter)
 
-# Specify C++ Standard
+# Set C++ standard requirements
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_TYPE Debug)
 
+# Compiler options for development
 add_compile_options(-fsanitize=address -g -O0)
 add_link_options(-fsanitize=address)
 
-# Include subdirectories
-add_subdirectory(scheme-tokenizer)  # This should come before any dependencies that require it
+# Adding subdirectories
+add_subdirectory(gc)
+add_subdirectory(scheme-internals)
+add_subdirectory(scheme-tokenizer)
 add_subdirectory(scheme-parser)
-add_subdirectory(scheme)  # Assuming 'scheme' directory contains main application and depends on both parser and tokenizer
+add_subdirectory(scheme)
 
-# Optionally enable testing globally if all sub-projects include tests
-enable_testing()
+# Assuming 'scheme' subdirectory defines 'SchemeInterpreter' executable
+# Set include directories here, assuming 'SchemeInterpreter' is the target name defined in the 'scheme' subdirectory
+
+
+# enable_testing()

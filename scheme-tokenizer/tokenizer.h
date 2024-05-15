@@ -56,10 +56,14 @@ inline Token MakeLongToken(std::string &&symbols) {
   }
   return SymbolToken(symbols);
 }
+template <typename... Args>
+inline bool Matches(char cur, char first, Args... rest) {
+  return cur == first || (... || (cur == rest));
+}
 
 class Tokenizer {
 public:
-  Tokenizer(std::istream *in) : working_stream_(in) {}
+  Tokenizer(std::istream *in) : working_stream_(in) { Step(); }
 
   bool IsEnd() { return cur_ == EOF; }
 
@@ -71,8 +75,7 @@ public:
     std::string accum_token;
 
     for (; !IsEnd(); Step()) {
-      if (cur_ == '(' || cur_ == ')' || cur_ == '.' || cur_ == '*' ||
-          cur_ == '/' || cur_ == '\'') {
+      if (Matches(cur_, '(', ')', '.', '*', '/', '\'')) {
         if (accum_token.empty()) {
           this_token_ = Tokenize_special(cur_);
           return Step();
@@ -81,10 +84,9 @@ public:
       } else if (std::isspace(cur_) && !accum_token.empty()) {
         Step();
         return RecordLongToken(std::move(accum_token));
-      } else if (isalnum(cur_) || cur_ == '?' || cur_ == '!' || cur_ == '#' ||
-                 cur_ == '>' || cur_ == '<' || cur_ == '=') {
+      } else if (isalnum(cur_) || Matches(cur_, '?', '!', '#', '>', '<', '=')) {
         accum_token.push_back(cur_);
-      } else if (cur_ == '-' || cur_ == '+') {
+      } else if (Matches(cur_, '+', '-')) {
         if (accum_token.empty() && !isdigit(Peek())) {
           this_token_ = SymbolToken({cur_});
           return Step();

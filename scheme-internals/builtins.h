@@ -1,4 +1,5 @@
 #include "interfaces.h"
+#include "scope.h"
 
 class BuiltInObject : public Object {
 public:
@@ -7,83 +8,117 @@ public:
   virtual void PrintTo(std::ostream *out) const override;
 };
 
-Object *Quote(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
+GCTracked *Quote(std::shared_ptr<Scope> &scope,
+                 const std::vector<GCTracked *> &args);
 
-Object *Plus(const std::vector<Object *> &args);
+GCTracked *If(std::shared_ptr<Scope> &scope,
+              const std::vector<GCTracked *> &args);
 
-Object *Minus(const std::vector<Object *> &args);
+GCTracked *And(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *Multiply(const std::vector<Object *> &args);
+GCTracked *Or(std::shared_ptr<Scope> &scope,
+              const std::vector<GCTracked *> &args);
 
-Object *Divide(const std::vector<Object *> &args);
+GCTracked *Define(std::shared_ptr<Scope> &scope,
+                  const std::vector<GCTracked *> &args);
 
-Object *If(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
+GCTracked *Set(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *CheckNull(const std::vector<Object *> &args);
+GCTracked *Lambda(std::shared_ptr<Scope> &scope,
+                  const std::vector<GCTracked *> &args);
 
-Object *CheckPair(const std::vector<Object *> &args);
+GCTracked *Eval(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *CheckNumber(const std::vector<Object *> &args);
-Object *CheckBoolean(const std::vector<Object *> &args);
+GCTracked *Plus(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *CheckSymbol(const std::vector<Object *> &args);
+GCTracked *Minus(std::shared_ptr<Scope> &scope,
+                 const std::vector<GCTracked *> &args);
 
-Object *CheckList(const std::vector<Object *> &args);
+GCTracked *Multiply(std::shared_ptr<Scope> &scope,
+                    const std::vector<GCTracked *> &args);
 
-// FIXME
-Object *Eq(const std::vector<Object *> &args);
-// FIXME
-Object *Equal(const std::vector<Object *> &args);
-Object *IntegerEqual(const std::vector<Object *> &args);
+GCTracked *Divide(std::shared_ptr<Scope> &scope,
+                  const std::vector<GCTracked *> &args);
 
-Object *Not(const std::vector<Object *> &args);
+GCTracked *CheckNull(std::shared_ptr<Scope> &scope,
+                     const std::vector<GCTracked *> &args);
 
-Object *Equality(const std::vector<Object *> &args);
+GCTracked *CheckPair(std::shared_ptr<Scope> &scope,
+                     const std::vector<GCTracked *> &args);
 
-Object *More(const std::vector<Object *> &args);
+GCTracked *CheckNumber(std::shared_ptr<Scope> &scope,
+                       const std::vector<GCTracked *> &args);
+GCTracked *CheckBoolean(std::shared_ptr<Scope> &scope,
+                        const std::vector<GCTracked *> &args);
 
-Object *Less(const std::vector<Object *> &args);
+GCTracked *CheckSymbol(std::shared_ptr<Scope> &scope,
+                       const std::vector<GCTracked *> &args);
 
-Object *MoreOrEqual(const std::vector<Object *> &args);
+GCTracked *CheckList(std::shared_ptr<Scope> &scope,
+                     const std::vector<GCTracked *> &args);
 
-Object *LessOrEqual(const std::vector<Object *> &args);
+GCTracked *Eq(std::shared_ptr<Scope> &scope,
+              const std::vector<GCTracked *> &args);
+GCTracked *Eql(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *Min(const std::vector<Object *> &args);
+GCTracked *Not(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *Max(const std::vector<Object *> &args);
+GCTracked *Equality(std::shared_ptr<Scope> &scope,
+                    const std::vector<GCTracked *> &args);
 
-Object *Abs(const std::vector<Object *> &args);
+GCTracked *More(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *Cons(const std::vector<Object *> &args);
+GCTracked *Less(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *Car(const std::vector<Object *> &args);
+GCTracked *MoreOrEqual(std::shared_ptr<Scope> &scope,
+                       const std::vector<GCTracked *> &args);
 
-Object *Cdr(const std::vector<Object *> &args);
+GCTracked *LessOrEqual(std::shared_ptr<Scope> &scope,
+                       const std::vector<GCTracked *> &args);
 
-Object *SetCar(const std::vector<Object *> &args);
+GCTracked *Min(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *SetCdr(const std::vector<Object *> &args);
+GCTracked *Max(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *List(const std::vector<Object *> &args);
+GCTracked *Cons(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *ListRef(const std::vector<Object *> &args);
+GCTracked *Car(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *ListTail(const std::vector<Object *> &args);
+GCTracked *Cdr(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-Object *And(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
+GCTracked *SetCar(std::shared_ptr<Scope> &scope,
+                  const std::vector<GCTracked *> &args);
 
-Object *Or(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
+GCTracked *SetCdr(std::shared_ptr<Scope> &scope,
+                  const std::vector<GCTracked *> &args);
 
-Object *Define(std::shared_ptr<Scope> &scope,
-               const std::vector<Object *> &args);
+GCTracked *List(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *Set(std::shared_ptr<Scope> &scope, const std::vector<Object *> &args);
+GCTracked *ListRef(std::shared_ptr<Scope> &scope,
+                   const std::vector<GCTracked *> &args);
 
-Object *Lambda(std::shared_ptr<Scope> &scope,
-               const std::vector<Object *> &args);
+GCTracked *ListTail(std::shared_ptr<Scope> &scope,
+                    const std::vector<GCTracked *> &args);
 
-Object *Exit(const std::vector<Object *> &args);
+GCTracked *Exit(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
 
-Object *Map(const std::vector<Object *> &args);
+GCTracked *Map(std::shared_ptr<Scope> &scope,
+               const std::vector<GCTracked *> &args);
 
-// Object* Load(const std::vector<Object*> &args);
+// GCTracked* Load(std::shared_ptr<Scope> &scope,const std::vector<GCTracked*>
+// &args);
