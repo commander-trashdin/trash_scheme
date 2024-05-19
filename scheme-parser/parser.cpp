@@ -21,19 +21,16 @@ GCTracked *Parser::ReadProper() {
   auto current_object = tokenizer_.GetToken().value();
 
   if (SymbolToken *symbol = std::get_if<SymbolToken>(&current_object)) {
-    tokenizer_.Next();
     if (symbol->name == "#t")
       return Create<Boolean>(true);
-    else if (symbol->name == "#f")
+    if (symbol->name == "#f")
       return Create<Boolean>(false);
     return Create<Symbol>(symbol->name);
   } else if (NumberToken *num_tok = std::get_if<NumberToken>(&current_object)) {
-    tokenizer_.Next();
     return Create<Number, constant>(num_tok->value);
   } else {
     auto syntax = std::get<SyntaxToken>(current_object);
     if (syntax == SyntaxToken::Quote) {
-      tokenizer_.Next();
       auto new_cell = Create<Cell>();
       auto list = Create<Cell>();
       new_cell->As<Cell>()->SetFirst(Create<Symbol>("quote"));
@@ -47,8 +44,6 @@ GCTracked *Parser::ReadProper() {
         ParenClose();
       else
         ParenOpen();
-
-      tokenizer_.Next();
       return ReadList();
     }
   }
@@ -56,6 +51,7 @@ GCTracked *Parser::ReadProper() {
 }
 
 GCTracked *Parser::ReadList() {
+  tokenizer_.Next();
   if (tokenizer_.IsEnd())
     throw SyntaxError("Input not complete");
 
@@ -76,6 +72,7 @@ GCTracked *Parser::ReadList() {
           throw SyntaxError("Improper list syntax");
 
         tail->As<Cell>()->SetSecond(ReadProper());
+        tokenizer_.Next();
         if (auto syntax = std::get_if<SyntaxToken>(&current_token);
             !(syntax && *syntax == SyntaxToken::ParenClose))
           throw SyntaxError("Improper list syntax");
@@ -84,6 +81,7 @@ GCTracked *Parser::ReadList() {
       }
     }
     auto current_object = ReadProper();
+    tokenizer_.Next();
     auto new_cell = Create<Cell>();
     new_cell->As<Cell>()->SetFirst(current_object);
     if (head == nullptr)

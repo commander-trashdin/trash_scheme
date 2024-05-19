@@ -1,6 +1,4 @@
-# Main executable
-# Main executable
-add_executable(scheme main.cpp scheme.cpp)
+add_executable(scheme main.cpp scheme.h scheme.cpp)
 
 # Include directories
 target_include_directories(scheme PRIVATE 

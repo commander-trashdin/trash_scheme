@@ -1,9 +1,10 @@
+#pragma once
 #include "scope.h"
 #include "gc.h"
 #include "interfaces.h"
 #include "util.h"
 
-Scope::~Scope() { GCManager::GetInstance().RemoveRoot(this); }
+Scope::~Scope() {}
 
 std::shared_ptr<Scope> Scope::Create() {
   std::shared_ptr<Scope> newScope = std::make_shared<Scope>();
@@ -29,3 +30,15 @@ std::pair<GCTracked *, std::shared_ptr<Scope>> Scope::Lookup(GCTracked *sym) {
 }
 
 GCTracked *&Scope::operator[](GCTracked *sym) { return variables_[sym]; }
+
+std::size_t GCPtrSymHash::operator()(GCTracked *k) const {
+  if (k->ID() != Types::symbol)
+    throw std::runtime_error("GCPtrSymHash: not a symbol");
+  return std::hash<std::string>()(k->As<Symbol>()->GetName());
+}
+
+bool GCPtrSymEqual::operator()(GCTracked *lhs, GCTracked *rhs) const {
+  if (lhs->ID() != Types::symbol || rhs->ID() != Types::symbol)
+    throw std::runtime_error("GCPtrSymEqual: not a symbol");
+  return lhs->As<Symbol>()->GetName() == rhs->As<Symbol>()->GetName();
+}

@@ -12,14 +12,14 @@ public:
 
   ~SchemeInterpreter();
 
-  GCTracked *Eval(Object *in);
+  GCTracked *Eval(GCTracked *in);
 
-  void RegisterGlobalFn(const std::string &name,
+  void RegisterGlobalFn(const std::string name,
                         std::variant<Types, std::vector<Types>> arg_types,
                         GCTracked *(*fn)(std::shared_ptr<Scope> &,
                                          const std::vector<GCTracked *> &));
 
-  void RegisterSF(const std::string &name,
+  void RegisterSF(const std::string name,
                   GCTracked *(*sf)(std::shared_ptr<Scope> &,
                                    const std::vector<GCTracked *> &),
                   std::optional<size_t> arg_min = std::nullopt,

@@ -1,10 +1,11 @@
-#include "specialform.h"
 #include "gc.h"
 #include "interfaces.h"
+#include "storage.h"
 #include "util.h"
-#include <algorithm>
 
-SpecialForm::SpecialForm(const std::string &&name, ApplyMethod &&apply_method,
+SpecialForm *SpecialForm::AllocIn(T *storage) { return &(storage->sf_); }
+
+SpecialForm::SpecialForm(std::string name, ApplyMethod &&apply_method,
                          std::optional<size_t> arg_min,
                          std::optional<size_t> arg_max)
     : name_(std::move(name)), apply_method_(std::move(apply_method)) {}
@@ -25,3 +26,5 @@ GCTracked *SpecialForm::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
 void SpecialForm::PrintTo(std::ostream *out) const {
   *out << "#<special form " << name_ << ">" << std::endl;
 }
+
+Types SpecialForm::ID() const { return Types::specialform; }

@@ -82,7 +82,6 @@ public:
         }
         return RecordLongToken(std::move(accum_token));
       } else if (std::isspace(cur_) && !accum_token.empty()) {
-        Step();
         return RecordLongToken(std::move(accum_token));
       } else if (isalnum(cur_) || Matches(cur_, '?', '!', '#', '>', '<', '=')) {
         accum_token.push_back(cur_);

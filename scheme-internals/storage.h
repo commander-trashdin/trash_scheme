@@ -9,6 +9,7 @@ union T {
   LambdaFunction lf_;
   Cell c_;
   SpecialForm sf_;
+  BuiltInObject bio_;
 
   T() {}
   ~T() {}

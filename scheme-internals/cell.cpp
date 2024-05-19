@@ -4,7 +4,9 @@
 #include "storage.h"
 #include "util.h"
 
-Cell::Cell() : head_(nullptr), tail_(nullptr) {}
+Cell *Cell::AllocIn(T *storage) { return &(storage->c_); }
+
+Cell::Cell() : head_(Create<>()), tail_(Create<>()) {}
 
 Cell::Cell(GCTracked *head, GCTracked *tail) : head_(head), tail_(tail) {}
 
@@ -18,6 +20,7 @@ void Cell::PrintTo(std::ostream *out) const {
     tail_->PrintTo(out);
   } else {
     auto it = clistbegin();
+    ++it;
     while (it != clistend()) {
       *out << " ";
       (*it)->PrintTo(out);
@@ -42,67 +45,83 @@ GCTracked *Cell::GetSecond() const { return tail_; }
 
 void Cell::SetSecond(GCTracked *object) { tail_ = object; }
 
-Cell::ContentIterator::ContentIterator(Cell *cell) : cell_(cell) {}
-
-bool Cell::ContentIterator::operator!=(
-    const Cell::ContentIterator &other) const {
-  return false;
+bool Cell::operator==(const Object &other) const {
+  if (other.ID() != ID())
+    return false;
+  auto other_cell = static_cast<const Cell *>(&other);
+  return *head_ == *other_cell->head_ && *tail_ == *other_cell->tail_;
 }
 
-bool Cell::ContentIterator::operator==(
-    const Cell::ContentIterator &other) const {
-  return true;
-};
-Cell::ContentIterator &Cell::ContentIterator::operator++() { return *this; };
-Cell::ContentIterator Cell::ContentIterator::operator++(int) { return *this; };
-Cell::ContentIterator::reference Cell::ContentIterator::operator*() {
-  throw std::runtime_error("Dereferencing empty iterator!");
-};
-Cell::ContentIterator::pointer Cell::ContentIterator::operator->() const {
-  return nullptr;
-};
-template <typename T>
-Cell::ListIterator<T>::ListIterator(const Cell *cell) : cell_(cell){};
-template <typename T>
-bool Cell::ListIterator<T>::operator!=(const ListIterator &other) const {
+void Cell::Walk(const std::function<void(GCTracked *)> &fn) {
+  fn(head_);
+  fn(tail_);
+}
+
+Cell::ConstListIterator::ConstListIterator(const Cell *cell) : cell_(cell) {};
+
+bool Cell::ConstListIterator::operator!=(
+    const Cell::ConstListIterator &other) const {
   return cell_ != other.cell_;
 }
-template <typename T>
-bool Cell::ListIterator<T>::operator==(const ListIterator &other) const {
+bool Cell::ConstListIterator::operator==(
+    const Cell::ConstListIterator &other) const {
   return cell_ == other.cell_;
 }
-template <typename T>
-Cell::ListIterator<T> &Cell::ListIterator<T>::operator++() {
+
+Cell::ConstListIterator &Cell::ConstListIterator::operator++() {
   if (!cell_)
     throw std::runtime_error("Incrementing end iterator!");
   auto next = cell_->tail_;
   if (next->ID() == Types::cell)
     cell_ = next->As<Cell>();
+  else if (next->ID() == Types::null)
+    cell_ = nullptr;
   else
     throw std::runtime_error("Improper list!");
   return *this;
 }
-template <typename T>
-Cell::ListIterator<T> Cell::ListIterator<T>::operator++(int) {
-  if (!cell_)
-    throw std::runtime_error("Incrementing end iterator!");
-  auto next = cell_->tail_;
+
+Cell::ConstListIterator Cell::ConstListIterator::operator++(int) {
   auto current = *this;
-  if (next->ID() == Types::cell)
-    cell_ = next->As<Cell>();
-  else
-    throw std::runtime_error("Improper list!");
+  ++(*this);
   return current;
 }
 
-template <typename T>
-Cell::ListIterator<T>::reference Cell::ListIterator<T>::operator*() {
-  return const_cast<const T *&>(cell_->head_);
+Cell::ConstListIterator::value_type Cell::ConstListIterator::operator*() {
+  return cell_->head_;
 }
 
-template <typename T>
-Cell::ListIterator<T>::pointer Cell::ListIterator<T>::operator->() const {
-  return &(cell_->head_);
+Cell::MutListIterator::MutListIterator(Cell *cell) : cell_(cell) {};
+bool Cell::MutListIterator::operator!=(
+    const Cell::MutListIterator &other) const {
+  return cell_ != other.cell_;
+}
+bool Cell::MutListIterator::operator==(
+    const Cell::MutListIterator &other) const {
+  return cell_ == other.cell_;
+}
+
+Cell::MutListIterator &Cell::MutListIterator::operator++() {
+  if (!cell_)
+    throw std::runtime_error("Incrementing end iterator!");
+  auto next = cell_->tail_;
+  if (next->ID() == Types::cell)
+    cell_ = next->As<Cell>();
+  else if (next->ID() == Types::null)
+    cell_ = nullptr;
+  else
+    throw std::runtime_error("Improper list!");
+  return *this;
+}
+
+Cell::MutListIterator Cell::MutListIterator::operator++(int) {
+  auto current = *this;
+  ++(*this);
+  return current;
+}
+
+Cell::MutListIterator::value_type Cell::MutListIterator::operator*() {
+  return cell_->head_;
 }
 
 Cell::MutListIterator Cell::listbegin() { return MutListIterator(this); }

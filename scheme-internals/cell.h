@@ -22,46 +22,49 @@ public:
 
   void SetSecond(GCTracked *object);
 
-  struct ContentIterator : public Object::ContentIterator {
-    explicit ContentIterator(Cell *cell);
-    bool operator!=(const ContentIterator &other) const;
-    bool operator==(const ContentIterator &other) const;
-    ContentIterator &operator++();
-    ContentIterator operator++(int);
-    reference operator*();
-    pointer operator->() const;
-    enum class State { head, tail, end };
+  virtual void Walk(const std::function<void(GCTracked *)> &fn) override;
 
-  private:
-    Cell *cell_;
-    State state_ = State::head;
-  };
-
-  ContentIterator contbegin() { return ContentIterator(this); }
-
-  ContentIterator contend() { return ContentIterator(this); }
-
-  template <typename T> struct ListIterator {
+  struct ConstListIterator {
     using iterator_category = std::forward_iterator_tag;
     using difference_type = std::ptrdiff_t;
-    using value_type = T *;
+    using value_type = const GCTracked *;
     using pointer = value_type *;
     using reference = value_type &;
 
-    explicit ListIterator(const Cell *cell = nullptr);
-    bool operator!=(const ListIterator<T> &other) const;
-    bool operator==(const ListIterator<T> &other) const;
-    ListIterator &operator++();
-    ListIterator operator++(int);
-    reference operator*();
-    pointer operator->() const;
+    ConstListIterator(const Cell *cell);
+    bool operator!=(const ConstListIterator &other) const;
+    bool operator==(const ConstListIterator &other) const;
+
+    ConstListIterator &operator++();
+
+    ConstListIterator operator++(int);
+
+    value_type operator*();
 
   private:
     const Cell *cell_;
   };
 
-  using ConstListIterator = ListIterator<const std::remove_const_t<GCTracked>>;
-  using MutListIterator = ListIterator<std::remove_const_t<GCTracked>>;
+  struct MutListIterator {
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = GCTracked *;
+    using pointer = value_type *;
+    using reference = value_type &;
+
+    MutListIterator(Cell *cell);
+    bool operator!=(const MutListIterator &other) const;
+    bool operator==(const MutListIterator &other) const;
+
+    MutListIterator &operator++();
+
+    MutListIterator operator++(int);
+
+    value_type operator*();
+
+  private:
+    Cell *cell_;
+  };
 
   ConstListIterator clistbegin() const;
 

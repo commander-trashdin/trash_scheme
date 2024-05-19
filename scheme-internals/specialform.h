@@ -10,11 +10,13 @@ public:
 
   static SpecialForm *AllocIn(T *storage);
 
-  SpecialForm(const std::string &&name, ApplyMethod &&apply_method,
+  SpecialForm(std::string name, ApplyMethod &&apply_method,
               std::optional<size_t> arg_min = std::nullopt,
               std::optional<size_t> arg_max = std::nullopt);
 
   void PrintTo(std::ostream *out) const override;
+
+  Types ID() const override;
 
   virtual GCTracked *Apply(std::shared_ptr<Scope> &scope,
                            GCTracked *args) override;

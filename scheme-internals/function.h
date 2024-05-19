@@ -1,5 +1,6 @@
 #pragma once
 #include "interfaces.h"
+#include "scope.h"
 #include <optional>
 #include <span>
 #include <variant>
@@ -12,11 +13,12 @@ public:
   using ApplyMethod = GCTracked *(*)(std::shared_ptr<Scope> &scope,
                                      const std::vector<GCTracked *> &);
   static Function *AllocIn(T *storage);
-  Function(const std::string &&name,
-           std::variant<Types, std::vector<Types>> arg_types,
+  Function(std::string name, std::variant<Types, std::vector<Types>> arg_types,
            ApplyMethod &&apply_method);
 
   void PrintTo(std::ostream *out) const override;
+
+  Types ID() const override;
 
   virtual GCTracked *Apply(std::shared_ptr<Scope> &scope,
                            GCTracked *args) override;
@@ -38,6 +40,8 @@ public:
   static LambdaFunction *AllocIn(T *storage);
   GCTracked *Apply(std::shared_ptr<Scope> &scope, GCTracked *args) override;
 
+  Types ID() const override;
+
   void PrintTo(std::ostream *out) const override;
 
   std::shared_ptr<Scope> GetScope();
@@ -51,6 +55,8 @@ public:
   std::vector<GCTracked *> GetBody();
 
   void AddToBody(GCTracked *form);
+
+  virtual void Walk(const std::function<void(GCTracked *)> &fn) override;
 
 private:
   std::shared_ptr<Scope> current_scope_;

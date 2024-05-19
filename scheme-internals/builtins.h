@@ -1,13 +1,6 @@
 #include "interfaces.h"
 #include "scope.h"
 
-class BuiltInObject : public Object {
-public:
-  virtual Types ID() const override;
-
-  virtual void PrintTo(std::ostream *out) const override;
-};
-
 GCTracked *Quote(std::shared_ptr<Scope> &scope,
                  const std::vector<GCTracked *> &args);
 

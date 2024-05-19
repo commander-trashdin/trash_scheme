@@ -56,71 +56,53 @@ SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
   RegisterGlobalFn("eval", v, ::Eval);
   v = {Types::function, Types::cell};
   RegisterGlobalFn("map", v, Map);
-
-  // global_scope_->variables_["exit"] = Create<Function>("exit", Exit);
+  v.clear();
+  RegisterGlobalFn("exit", v, Exit);
 }
 
-SchemeInterpreter::~SchemeInterpreter() { global_scope_->variables_.clear(); }
+SchemeInterpreter::~SchemeInterpreter() { global_scope_->Clear(); }
 
 void SchemeInterpreter::RegisterGlobalFn(
-    const std::string &name, std::variant<Types, std::vector<Types>> arg_types,
+    const std::string name, std::variant<Types, std::vector<Types>> arg_types,
     GCTracked *(*fn)(std::shared_ptr<Scope> &,
                      const std::vector<GCTracked *> &)) {
-  auto func = Create<Function>(name, arg_types, fn);
+  auto func = Create<Function>(name, arg_types, std::move(fn));
   (*global_scope_)[Create<Symbol, constant>(name)] = func;
 }
 
 void SchemeInterpreter::RegisterSF(
-    const std::string &name,
+    const std::string name,
     GCTracked *(*sf)(std::shared_ptr<Scope> &,
                      const std::vector<GCTracked *> &),
     std::optional<size_t> arg_min, std::optional<size_t> arg_max) {
-  auto sform = Create<SpecialForm>(name, sf, arg_min, arg_max);
+  auto sform = Create<SpecialForm>(name, std::move(sf), arg_min, arg_max);
   (*global_scope_)[Create<Symbol, constant>(name)] = sform;
 }
 
-Object *SchemeInterpreter::Eval(Object *in) {
+GCTracked *SchemeInterpreter::Eval(GCTracked *in) {
   if (in == nullptr)
-    throw RuntimeError("First element of the list must be function");
-
-  return in->Eval(global_scope_);
+    throw std::runtime_error("First element of the list must be function");
+  return ::Eval(global_scope_, {in});
 }
 
 inline std::string Print(const Object *obj) {
   std::stringstream ss;
-  PrintTo(obj, &ss);
+  obj->PrintTo(&ss);
   return ss.str();
-}
-
-std::vector<Object *> ToVector(const Object *head) {
-  std::vector<Object *> elements;
-  if (!head) {
-    return elements;
-  } else {
-    auto current = AsCell(head);
-    for (auto current = AsCell(head); current;) {
-      elements.push_back(current->GetFirst());
-      auto next = current->GetSecond();
-      if (!IsCell(next) && next)
-        throw std::runtime_error("wrong argument list");
-
-      current = AsCell(next);
-    }
-  }
-  return elements;
 }
 
 void SchemeInterpreter::REPL(std::istream *in) {
   Parser parser((Tokenizer(in)));
   while (true) {
     std::cout << "> ";
+    std::cout.flush();
     GCManager::GetInstance().SetPhase(Phase::Read);
     auto obj = parser.Read();
     GCManager::GetInstance().SetPhase(Phase::Eval);
     auto res = Eval(obj);
-    if (dynamic_cast<BuiltInObject *>(res) != nullptr)
+    if (res->ID() == Types::builtin)
       break;
-    PrintTo(res, &std::cout);
+    res->PrintTo(&std::cout);
 
     std::cout << "\n";
   }

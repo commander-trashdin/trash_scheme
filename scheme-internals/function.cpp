@@ -1,13 +1,13 @@
-#include "function.h"
 #include "builtins.h"
 #include "cell.h"
 #include "gc.h"
 #include "interfaces.h"
-#include "symbol.h"
+#include "storage.h"
 #include "util.h"
-#include <algorithm>
 #include <cstddef>
 #include <vector>
+
+Function *Function::AllocIn(T *storage) { return &(storage->f_); }
 
 std::optional<Types> Function::ArgType(size_t index) {
   if (auto type = std::get_if<Types>(&arg_types_); type != nullptr)
@@ -18,13 +18,16 @@ std::optional<Types> Function::ArgType(size_t index) {
   return v[index];
 }
 
-Function::Function(const std::string &&name,
+Function::Function(std::string name,
                    std::variant<Types, std::vector<Types>> arg_types,
                    ApplyMethod &&apply_method)
-    : name(name), arg_types_(arg_types), apply_method(apply_method) {}
+    : name(std::move(name)), arg_types_(arg_types), apply_method(apply_method) {
+}
 
 GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
   std::vector<GCTracked *> result;
+  if (args->ID() == Types::null) // FIXME: This is incorrect!
+    return apply_method(scope, result);
   auto first = args;
   if (first->ID() != Types::cell)
     throw std::runtime_error("Expected a list of arguments!");
@@ -36,8 +39,9 @@ GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
     auto this_arg_type = ArgType(index);
     if (!this_arg_type)
       throw std::runtime_error("Too many arguments!");
-    if (Is(*it, *this_arg_type))
-      result.push_back(Eval(scope, {*it})); // How is this possible?
+    auto arg = Eval(scope, {*it});
+    if (SubtypeOf(*this_arg_type, arg->ID()))
+      result.push_back(arg);
     else
       throw std::runtime_error("Wrong argument type!");
     ++it;
@@ -46,16 +50,18 @@ GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
   return apply_method(scope, result);
 }
 
+Types Function::ID() const { return Types::function; }
+
 void Function::PrintTo(std::ostream *out) const {
   *out << "#<function " << name << ">" << std::endl;
 }
+
+LambdaFunction *LambdaFunction::AllocIn(T *storage) { return &(storage->lf_); }
 
 LambdaFunction::LambdaFunction(std::shared_ptr<Scope> scope,
                                std::vector<GCTracked *> &&args,
                                std::span<GCTracked *const> body)
     : current_scope_(scope), args_(args), body_(body.begin(), body.end()) {}
-
-LambdaFunction *LambdaFunction::AllocIn(T *storage) { return &(storage->lf_); }
 
 GCTracked *LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
                                  GCTracked *args) {
@@ -86,6 +92,8 @@ void LambdaFunction::PrintTo(std::ostream *out) const {
   *out << "#<lambda function>" << std::endl;
 }
 
+Types LambdaFunction::ID() const { return Types::function; }
+
 std::shared_ptr<Scope> LambdaFunction::GetScope() { return current_scope_; }
 
 void LambdaFunction::SetScope(const std::shared_ptr<Scope> &scope) {
@@ -99,3 +107,14 @@ void LambdaFunction::SetArgs(std::vector<GCTracked *> args) { args_ = args; }
 std::vector<GCTracked *> LambdaFunction::GetBody() { return body_; }
 
 void LambdaFunction::AddToBody(GCTracked *form) { body_.push_back(form); }
+
+void LambdaFunction::Walk(const std::function<void(GCTracked *)> &fn) {
+  for (auto &[key, obj] : current_scope_->variables_) {
+    fn(key);
+    fn(obj);
+  }
+  for (auto obj : args_)
+    fn(obj);
+  for (auto obj : body_)
+    fn(obj);
+}

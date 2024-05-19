@@ -1,7 +1,5 @@
 #include "interfaces.h"
 
-bool Is(const GCTracked *obj, Types type);
-
 inline std::string Print(const GCTracked *obj);
 
 struct SyntaxError : public std::runtime_error {

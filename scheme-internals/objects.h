@@ -1,5 +1,6 @@
 #pragma once
 
+#include "builtinobj.h"
 #include "cell.h"
 #include "function.h"
 #include "number.h"

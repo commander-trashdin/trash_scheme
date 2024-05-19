@@ -1,18 +1,12 @@
 #include "builtins.h"
 #include "cell.h"
+#include "gc.h"
 #include "interfaces.h"
-#include "number.h"
-#include "symbol.h"
+#include "specialform.h"
+#include "storage.h"
 #include "util.h"
 #include <cstdint>
-#include <gc.h>
 #include <numeric>
-
-Types BuiltInObject::ID() const { return Types::builtin; }
-
-void BuiltInObject::PrintTo(std::ostream *) const {
-  throw RuntimeError("Cannot print builtin object!");
-}
 
 GCTracked *Quote(std::shared_ptr<Scope> &,
                  const std::vector<GCTracked *> &args) {
@@ -22,14 +16,25 @@ GCTracked *Quote(std::shared_ptr<Scope> &,
 GCTracked *Eval(std::shared_ptr<Scope> &scope,
                 const std::vector<GCTracked *> &args) {
   auto arg = args[0];
+  auto lock = GCManager::GetInstance().Guard(arg);
   if (arg->ID() == Types::symbol) {
     return scope->Lookup(arg).first;
   } else if (arg->ID() == Types::cell) {
     auto fn = arg->As<Cell>()->GetFirst();
     auto fn_args = arg->As<Cell>()->GetSecond();
-    if (fn->ID() != Types::function)
+    if (fn->ID() == Types::function)
+      return fn->As<Function>()->Apply(scope, fn_args);
+    if (fn->ID() == Types::specialform)
+      return fn->As<SpecialForm>()->Apply(scope, fn_args);
+    if (fn->ID() == Types::symbol) {
+      auto [obj, _] = scope->Lookup(fn);
+      if (obj->ID() == Types::function)
+        return obj->As<Function>()->Apply(scope, fn_args);
+      if (obj->ID() == Types::specialform)
+        return obj->As<SpecialForm>()->Apply(scope, fn_args);
       throw RuntimeError("First argument must be a function");
-    return fn->As<Function>()->Apply(scope, fn_args);
+    }
+    throw RuntimeError("First argument must be a function");
   } else {
     return arg;
   }
@@ -311,7 +316,7 @@ GCTracked *List(std::shared_ptr<Scope> &,
        ++ind, new_cell = new_cell->As<Cell>()->GetSecond()) {
     new_cell->As<Cell>()->SetFirst(args[ind]);
     if (ind != args.size() - 1)
-      new_cell->As<Cell>()->SetSecond(Create<>());
+      new_cell->As<Cell>()->SetSecond(Create<Cell>());
   }
   return res;
 }

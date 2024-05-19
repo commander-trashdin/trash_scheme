@@ -3,7 +3,7 @@
 
 class Symbol : public Object {
 public:
-  using ValueType = std::string_view;
+  using ValueType = std::string;
 
   static Symbol *AllocIn(T *storage);
   static std::unordered_map<int64_t, GCTracked *> *GetConstantRegistry();

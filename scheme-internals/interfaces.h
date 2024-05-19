@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <concepts>
 #include <cstdint>
+#include <functional>
 #include <istream>
 #include <memory>
 #include <stdexcept>
@@ -25,7 +26,7 @@ enum class Types {
   builtin
 };
 
-inline bool Subtype(const Types fst, const Types snd) {
+inline bool SubtypeOf(const Types fst, const Types snd) {
   static std::unordered_map<Types, std::vector<Types>> map{
       {Types::t,
        {Types::t, Types::cell, Types::null, Types::number, Types::symbol,
@@ -85,7 +86,7 @@ inline constexpr bool is_static_v = is_static<Derived>::value;
 
 class Object {
 public:
-  virtual ~Object();
+  virtual ~Object() {}
 
   virtual Types ID() const { return Types::t; }
 
@@ -95,28 +96,7 @@ public:
 
   virtual bool operator==(const Object &other) const { return false; };
 
-  struct ContentIterator {
-    using iterator_category = std::forward_iterator_tag;
-    using difference_type = std::ptrdiff_t;
-    using value_type = GCTracked *;
-    using pointer = value_type *;
-    using reference = value_type &;
-
-    ContentIterator() {}
-    virtual ~ContentIterator() {}
-    bool operator!=(const ContentIterator &other) const { return false; };
-    bool operator==(const ContentIterator &other) const { return true; };
-    ContentIterator &operator++() { return *this; };
-    ContentIterator operator++(int) { return *this; };
-    reference operator*() {
-      throw std::runtime_error("Dereferencing empty iterator!");
-    };
-    pointer operator->() const { return nullptr; };
-  };
-
-  ContentIterator contbegin() { return ContentIterator(); }
-
-  ContentIterator contend() { return ContentIterator(); }
+  virtual void Walk(const std::function<void(GCTracked *)> &fn) { return; };
 };
 
 class Applicable {
