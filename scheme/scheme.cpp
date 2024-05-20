@@ -56,8 +56,13 @@ SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
   RegisterGlobalFn("eval", v, ::Eval);
   v = {Types::function, Types::cell};
   RegisterGlobalFn("map", v, Map);
+  v = {Types::string};
+  RegisterGlobalFn("load", v, Load);
+  v = {Types::t};
+  RegisterGlobalFn("print", v, Print);
   v.clear();
   RegisterGlobalFn("exit", v, Exit);
+  RegisterGlobalFn("read", v, Read);
 }
 
 SchemeInterpreter::~SchemeInterpreter() { global_scope_->Clear(); }
@@ -81,7 +86,7 @@ void SchemeInterpreter::RegisterSF(
 
 GCTracked *SchemeInterpreter::Eval(GCTracked *in) {
   if (in == nullptr)
-    throw std::runtime_error("First element of the list must be function");
+    throw std::runtime_error("Evalutation of null object");
   return ::Eval(global_scope_, {in});
 }
 

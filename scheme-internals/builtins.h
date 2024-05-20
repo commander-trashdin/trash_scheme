@@ -113,5 +113,11 @@ GCTracked *Exit(std::shared_ptr<Scope> &scope,
 GCTracked *Map(std::shared_ptr<Scope> &scope,
                const std::vector<GCTracked *> &args);
 
-// GCTracked* Load(std::shared_ptr<Scope> &scope,const std::vector<GCTracked*>
-// &args);
+GCTracked *Load(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);
+
+GCTracked *Print(std::shared_ptr<Scope> &scope,
+                 const std::vector<GCTracked *> &args);
+
+GCTracked *Read(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args);

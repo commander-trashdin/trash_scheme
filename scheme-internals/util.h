@@ -1,6 +1,10 @@
 #include "interfaces.h"
 
-inline std::string Print(const GCTracked *obj);
+static const std::string tSchemeExtension = ".trash";
+
+[[nodiscard]]
+
+bool hasCorrectExtension(const std::string &filename);
 
 struct SyntaxError : public std::runtime_error {
   explicit SyntaxError(const std::string &what);

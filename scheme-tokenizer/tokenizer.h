@@ -13,8 +13,15 @@
 #include <variant>
 
 struct SymbolToken {
-  SymbolToken(std::string new_name) : name(new_name) {}
+  SymbolToken(std::string new_name) : name(std::move(new_name)) {}
   bool operator==(const SymbolToken &rhs) const { return (name == rhs.name); }
+
+  std::string name;
+};
+
+struct StringToken {
+  StringToken(std::string new_name) : name(std::move(new_name)) {}
+  bool operator==(const StringToken &rhs) const { return (name == rhs.name); }
 
   std::string name;
 };
@@ -28,7 +35,7 @@ struct NumberToken {
   int64_t value;
 };
 
-using Token = std::variant<SymbolToken, NumberToken, SyntaxToken>;
+using Token = std::variant<SymbolToken, NumberToken, StringToken, SyntaxToken>;
 
 inline Token Tokenize_special(char ch) {
   switch (ch) {
@@ -68,10 +75,10 @@ public:
   bool IsEnd() { return cur_ == EOF; }
 
   void Next() {
+    this_token_.reset();
     if (IsEnd())
       return;
 
-    this_token_.reset();
     std::string accum_token;
 
     for (; !IsEnd(); Step()) {
@@ -81,6 +88,18 @@ public:
           return Step();
         }
         return RecordLongToken(std::move(accum_token));
+      } else if (cur_ == '"') {
+        if (in_string_) {
+          in_string_ = false;
+          this_token_ = StringToken(std::move(accum_token));
+          return Step();
+        }
+        if (accum_token.empty()) {
+          in_string_ = true;
+          continue;
+        } else {
+          throw std::runtime_error("Unexpected string token");
+        }
       } else if (std::isspace(cur_) && !accum_token.empty()) {
         return RecordLongToken(std::move(accum_token));
       } else if (isalnum(cur_) || Matches(cur_, '?', '!', '#', '>', '<', '=')) {
@@ -112,4 +131,5 @@ private:
   std::optional<Token> this_token_ = std::nullopt;
   std::istream *working_stream_;
   char cur_;
+  bool in_string_ = false;
 };

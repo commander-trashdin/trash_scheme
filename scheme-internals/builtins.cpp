@@ -1,11 +1,9 @@
 #include "builtins.h"
-#include "cell.h"
 #include "gc.h"
-#include "interfaces.h"
-#include "specialform.h"
-#include "storage.h"
+#include "parser.h"
 #include "util.h"
 #include <cstdint>
+#include <fstream>
 #include <numeric>
 
 GCTracked *Quote(std::shared_ptr<Scope> &,
@@ -379,4 +377,39 @@ GCTracked *Map(std::shared_ptr<Scope> &, const std::vector<GCTracked *> &args) {
 GCTracked *Exit(std::shared_ptr<Scope> &,
                 const std::vector<GCTracked *> &args) {
   return Create<BuiltInObject>();
+}
+
+GCTracked *Load(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args) {
+  auto filename = args[0]->As<String>()->GetValue();
+  if (hasCorrectExtension(filename)) {
+    throw RuntimeError("Wrong file extension");
+  }
+  std::ifstream filestream(filename);
+  Parser parser((Tokenizer(&filestream)));
+  auto global_scope = scope->GetGlobalScope();
+  GCManager::GetInstance().SetPhase(Phase::Read);
+  while (auto obj = parser.Read()) {
+    GCManager::GetInstance().SetPhase(Phase::Eval);
+    Eval(global_scope, {obj});
+    GCManager::GetInstance().SetPhase(Phase::Read);
+  }
+  return Create<>();
+}
+
+GCTracked *Print(std::shared_ptr<Scope> &,
+                 const std::vector<GCTracked *> &args) {
+  args[0]->PrintTo(&std::cout);
+  return args[0];
+}
+
+GCTracked *Read(std::shared_ptr<Scope> &scope,
+                const std::vector<GCTracked *> &args) {
+  Parser parser((Tokenizer(&std::cin)));
+  GCManager::GetInstance().SetPhase(Phase::Read);
+  auto obj = parser.Read();
+  if (obj == nullptr)
+    throw RuntimeError("Read error");
+  GCManager::GetInstance().SetPhase(Phase::Eval);
+  return obj;
 }

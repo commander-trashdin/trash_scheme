@@ -10,13 +10,13 @@ public:
 
   explicit Number(int64_t value = 0) : value_(value) {}
 
-  virtual Types ID() const override;
+  [[nodiscard]] Types ID() const override;
 
-  virtual void PrintTo(std::ostream *out) const override;
+  void PrintTo(std::ostream *out) const override;
 
-  virtual bool operator==(const Object &other) const override;
+  bool operator==(const Object &other) const override;
 
-  int64_t GetValue() const;
+  [[nodiscard]] int64_t GetValue() const;
 
 private:
   const int64_t value_;

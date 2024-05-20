@@ -10,6 +10,7 @@ union T {
   Cell c_;
   SpecialForm sf_;
   BuiltInObject bio_;
+  String str_;
 
   T() {}
   ~T() {}

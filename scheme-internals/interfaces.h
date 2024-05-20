@@ -1,4 +1,5 @@
 #pragma once
+#include "string.h"
 #include <algorithm>
 #include <concepts>
 #include <cstdint>
@@ -21,6 +22,7 @@ enum class Types {
   number,
   symbol,
   boolean,
+  string,
   function,
   specialform,
   builtin
@@ -30,7 +32,8 @@ inline bool SubtypeOf(const Types fst, const Types snd) {
   static std::unordered_map<Types, std::vector<Types>> map{
       {Types::t,
        {Types::t, Types::cell, Types::null, Types::number, Types::symbol,
-        Types::boolean, Types::function, Types::specialform, Types::builtin}},
+        Types::boolean, Types::function, Types::specialform, Types::builtin,
+        Types::string}},
       {Types::cell, {Types::cell}},
       {Types::null, {Types::null}},
       {Types::number, {Types::number}},
@@ -38,7 +41,8 @@ inline bool SubtypeOf(const Types fst, const Types snd) {
       {Types::boolean, {Types::boolean}},
       {Types::function, {Types::function}},
       {Types::specialform, {Types::specialform}},
-      {Types::builtin, {Types::builtin}}};
+      {Types::builtin, {Types::builtin}},
+      {Types::string, {Types::string}}};
   return std::find(map[fst].begin(), map[fst].end(), snd) != map[fst].end();
 }
 
@@ -50,6 +54,7 @@ class Number;
 class Symbol;
 class Boolean;
 class Function;
+class String;
 class LambdaFunction;
 class Cell;
 class SpecialForm;

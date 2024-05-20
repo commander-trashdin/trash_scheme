@@ -1,9 +1,9 @@
 #pragma once
 
+#include "interfaces.h"
 #include "tokenizer.h"
 #include <concepts>
 #include <cstdint>
-#include <gc.h>
 #include <istream>
 #include <memory>
 #include <span>

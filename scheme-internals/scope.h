@@ -24,6 +24,8 @@ public:
 
   std::pair<GCTracked *, std::shared_ptr<Scope>> Lookup(GCTracked *sym);
 
+  std::shared_ptr<Scope> GetGlobalScope();
+
   GCTracked *&operator[](GCTracked *symbol);
   void Clear() { variables_.clear(); }
 

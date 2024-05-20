@@ -4,7 +4,7 @@ class BuiltInObject : public Object {
 public:
   static BuiltInObject *AllocIn(T *storage);
 
-  virtual Types ID() const override;
+  [[nodiscard]] Types ID() const override;
 
-  virtual void PrintTo(std::ostream *out) const override;
+  void PrintTo(std::ostream *out) const override;
 };

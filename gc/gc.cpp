@@ -1,8 +1,5 @@
 #include "gc.h"
-#include "interfaces.h"
-#include "number.h"
 #include "scope.h"
-#include "symbol.h"
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -98,11 +95,8 @@ void GCManager::RegisterObject(GCTracked *obj) {
   objects_.insert(obj);
   return_.insert(obj);
   currentMemoryUsage_ += sizeof(*obj);
-  if (currentMemoryUsage_ >= threshold_ && phase_ != Phase::Read) {
-
-    auto memus = currentMemoryUsage_;
+  if (currentMemoryUsage_ >= threshold_ && phase_ != Phase::Read)
     CollectGarbage();
-  }
   return_.erase(obj);
 }
 
@@ -212,17 +206,9 @@ void GCTracked::Scan() {
 
 GCMark GCTracked::Color() const { return mark_; }
 
-Types GCTracked::ID() const {
-  if (!obj_ptr_)
-    return Types::null;
-  return obj_ptr_->ID();
-}
+Types GCTracked::ID() const { return obj_ptr_ ? obj_ptr_->ID() : Types::null; }
 
-bool GCTracked::IsFalse() const {
-  if (!obj_ptr_)
-    return true;
-  return obj_ptr_->IsFalse();
-}
+bool GCTracked::IsFalse() const { return !obj_ptr_ || obj_ptr_->IsFalse(); }
 
 bool GCTracked::operator==(const GCTracked &other) const {
   if (!obj_ptr_ && !other.obj_ptr_)

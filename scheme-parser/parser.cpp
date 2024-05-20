@@ -1,6 +1,5 @@
 #include "parser.h"
-#include "interfaces.h"
-#include "objects.h"
+#include "gc.h"
 #include "tokenizer.h"
 #include "util.h"
 #include <variant>
@@ -26,6 +25,8 @@ GCTracked *Parser::ReadProper() {
     if (symbol->name == "#f")
       return Create<Boolean>(false);
     return Create<Symbol>(symbol->name);
+  } else if (StringToken *str_tok = std::get_if<StringToken>(&current_object)) {
+    return Create<String>(str_tok->name);
   } else if (NumberToken *num_tok = std::get_if<NumberToken>(&current_object)) {
     return Create<Number, constant>(num_tok->value);
   } else {

@@ -1,4 +1,3 @@
-#pragma once
 #include "scope.h"
 #include "gc.h"
 #include "interfaces.h"
@@ -27,6 +26,13 @@ std::pair<GCTracked *, std::shared_ptr<Scope>> Scope::Lookup(GCTracked *sym) {
       return parent_->Lookup(sym);
   }
   return {it->second, shared_from_this()};
+}
+
+std::shared_ptr<Scope> Scope::GetGlobalScope() {
+  auto cur = this;
+  while (cur->parent_)
+    cur = cur->parent_.get();
+  return cur->shared_from_this();
 }
 
 GCTracked *&Scope::operator[](GCTracked *sym) { return variables_[sym]; }

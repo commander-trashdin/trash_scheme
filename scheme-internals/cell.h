@@ -8,17 +8,17 @@ public:
 
   Cell(GCTracked *head, GCTracked *tail);
 
-  virtual Types ID() const override;
+  [[nodiscard]] Types ID() const override;
 
-  virtual void PrintTo(std::ostream *out) const override;
+  void PrintTo(std::ostream *out) const override;
 
-  virtual bool operator==(const Object &other) const override;
+  bool operator==(const Object &other) const override;
 
-  GCTracked *GetFirst() const;
+  [[nodiscard]] GCTracked *GetFirst() const;
 
   void SetFirst(GCTracked *object);
 
-  GCTracked *GetSecond() const;
+  [[nodiscard]] GCTracked *GetSecond() const;
 
   void SetSecond(GCTracked *object);
 
@@ -66,9 +66,9 @@ public:
     Cell *cell_;
   };
 
-  ConstListIterator clistbegin() const;
+  [[nodiscard]] ConstListIterator clistbegin() const;
 
-  ConstListIterator clistend() const;
+  [[nodiscard]] ConstListIterator clistend() const;
 
   MutListIterator listbegin();
 

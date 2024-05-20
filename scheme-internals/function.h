@@ -18,10 +18,9 @@ public:
 
   void PrintTo(std::ostream *out) const override;
 
-  Types ID() const override;
+  [[nodiscard]] Types ID() const override;
 
-  virtual GCTracked *Apply(std::shared_ptr<Scope> &scope,
-                           GCTracked *args) override;
+  GCTracked *Apply(std::shared_ptr<Scope> &scope, GCTracked *args) override;
 
   std::optional<Types> ArgType(size_t index);
 
@@ -40,7 +39,7 @@ public:
   static LambdaFunction *AllocIn(T *storage);
   GCTracked *Apply(std::shared_ptr<Scope> &scope, GCTracked *args) override;
 
-  Types ID() const override;
+  [[nodiscard]] Types ID() const override;
 
   void PrintTo(std::ostream *out) const override;
 
@@ -56,7 +55,7 @@ public:
 
   void AddToBody(GCTracked *form);
 
-  virtual void Walk(const std::function<void(GCTracked *)> &fn) override;
+  void Walk(const std::function<void(GCTracked *)> &fn) override;
 
 private:
   std::shared_ptr<Scope> current_scope_;
