@@ -89,17 +89,17 @@ public:
         }
         return RecordLongToken(std::move(accum_token));
       } else if (cur_ == '"') {
-        if (in_string_) {
-          in_string_ = false;
-          this_token_ = StringToken(std::move(accum_token));
-          return Step();
+        Step();
+        while (cur_ != '"') {
+          if (IsEnd())
+            throw std::runtime_error("Unexpected end of string input");
+          if (cur_ == '"')
+            break;
+          accum_token.push_back(cur_);
+          Step();
         }
-        if (accum_token.empty()) {
-          in_string_ = true;
-          continue;
-        } else {
-          throw std::runtime_error("Unexpected string token");
-        }
+        this_token_ = StringToken(std::move(accum_token));
+        return Step();
       } else if (std::isspace(cur_) && !accum_token.empty()) {
         return RecordLongToken(std::move(accum_token));
       } else if (isalnum(cur_) || Matches(cur_, '?', '!', '#', '>', '<', '=')) {
@@ -131,5 +131,4 @@ private:
   std::optional<Token> this_token_ = std::nullopt;
   std::istream *working_stream_;
   char cur_;
-  bool in_string_ = false;
 };

@@ -24,7 +24,7 @@ GCTracked *SpecialForm::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
 }
 
 void SpecialForm::PrintTo(std::ostream *out) const {
-  *out << "#<special form " << name_ << ">" << std::endl;
+  *out << "#<special form " << name_ << ">";
 }
 
 Types SpecialForm::ID() const { return Types::specialform; }

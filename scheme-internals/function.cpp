@@ -53,7 +53,7 @@ GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
 Types Function::ID() const { return Types::function; }
 
 void Function::PrintTo(std::ostream *out) const {
-  *out << "#<function " << name << ">" << std::endl;
+  *out << "#<function " << name << ">";
 }
 
 LambdaFunction *LambdaFunction::AllocIn(T *storage) { return &(storage->lf_); }

@@ -382,7 +382,7 @@ GCTracked *Exit(std::shared_ptr<Scope> &,
 GCTracked *Load(std::shared_ptr<Scope> &scope,
                 const std::vector<GCTracked *> &args) {
   auto filename = args[0]->As<String>()->GetValue();
-  if (hasCorrectExtension(filename)) {
+  if (!hasCorrectExtension(filename)) {
     throw RuntimeError("Wrong file extension");
   }
   std::ifstream filestream(filename);
@@ -400,6 +400,7 @@ GCTracked *Load(std::shared_ptr<Scope> &scope,
 GCTracked *Print(std::shared_ptr<Scope> &,
                  const std::vector<GCTracked *> &args) {
   args[0]->PrintTo(&std::cout);
+  std::cout << std::endl;
   return args[0];
 }
 

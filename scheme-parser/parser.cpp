@@ -82,7 +82,8 @@ GCTracked *Parser::ReadList() {
       }
     }
     auto current_object = ReadProper();
-    tokenizer_.Next();
+    if (current_object->ID() != Types::cell) // Kinda hacky
+      tokenizer_.Next();
     auto new_cell = Create<Cell>();
     new_cell->As<Cell>()->SetFirst(current_object);
     if (head == nullptr)
