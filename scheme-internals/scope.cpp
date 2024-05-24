@@ -21,7 +21,7 @@ std::pair<GCTracked *, std::shared_ptr<Scope>> Scope::Lookup(GCTracked *sym) {
   auto it = variables_.find(sym);
   if (it == variables_.end()) {
     if (!parent_)
-      throw NameError(sym->As<Symbol>()->GetName());
+      return {::Create<RuntimeError>(sym->As<Symbol>()->GetName()), nullptr};
     else
       return parent_->Lookup(sym);
   }

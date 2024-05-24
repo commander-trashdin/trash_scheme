@@ -1,11 +1,16 @@
 #include "gc.h"
+#include "interfaces.h"
+#include "number.h"
 #include "scope.h"
 #include <algorithm>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <ostream>
 #include <ranges>
+#include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 bool operator<(GCMark a, GCMark b) {
@@ -16,38 +21,6 @@ RetLock GCManager::Guard(GCTracked *obj) { return RetLock(obj); }
 
 GCTracked *GetBool(bool kind) { return GCManager::GetInstance().GetBool(kind); }
 GCTracked *GetNil() { return GCManager::GetInstance().GetNil(); }
-/*
-template <NumberOrSymbol T> GCTracked *GetConstant(typename T::ValueType &val) {
-  auto registry = T::GetConstantRegistry();
-  auto it = registry->find(val);
-  if (it == registry->end())
-    it = registry->emplace(val, Create<T>(val)).first;
-  return it->second;
-}
-*/
-GCTracked *GetConstant(int64_t val) {
-  auto registry = GCManager::GetInstance().GetNumReg();
-  auto it = registry->find(val);
-  if (it == registry->end()) {
-    auto wrapped_obj = new GCTracked(GCMark::Constant);
-    auto to_store = Number::AllocIn(&wrapped_obj->storage_);
-    wrapped_obj->obj_ptr_ = new (to_store) Number(val);
-    it = registry->emplace(val, wrapped_obj).first;
-  }
-  return it->second;
-}
-
-GCTracked *GetConstant(const std::string &val) {
-  auto registry = GCManager::GetInstance().GetSymReg();
-  auto it = registry->find(val);
-  if (it == registry->end()) {
-    auto wrapped_obj = new GCTracked(GCMark::Constant);
-    auto to_store = Symbol::AllocIn(&wrapped_obj->storage_);
-    wrapped_obj->obj_ptr_ = new (to_store) Symbol(std::string(val));
-    it = registry->emplace(val, wrapped_obj).first;
-  }
-  return it->second;
-}
 
 void RegisterObject(GCTracked *obj) {
   GCManager::GetInstance().RegisterObject(obj);
@@ -113,15 +86,18 @@ std::unordered_map<std::string, GCTracked *> *GCManager::GetSymReg() {
   return &constant_symbols_;
 }
 
+std::unordered_map<std::string, GCTracked *> *GCManager::GetErrorReg() {
+  return &errors_;
+}
+
 void GCManager::AddRoot(const std::shared_ptr<Scope> &scope) {
   roots_.insert(scope);
 }
 
 void GCManager::Sweep() {
   auto cleaner = [](auto const &obj) {
-    auto copy = obj;
-    if (copy->Color() == GCMark::White) {
-      delete copy;
+    if (obj->Color() == GCMark::White) {
+      delete obj;
       return true;
     }
     return false;
@@ -147,6 +123,7 @@ void GCManager::CollectGarbage() {
   MarkRoots();
 
   std::vector<GCTracked *> greyObjects;
+  std::unordered_set<GCTracked *> removed;
   greyObjects.reserve(roots_.size() + return_.size());
   for (auto &root : roots_)
     for (auto [var, obj] : root->variables_) {
@@ -154,12 +131,14 @@ void GCManager::CollectGarbage() {
       greyObjects.push_back(var);
     }
   greyObjects.insert(greyObjects.end(), return_.begin(), return_.end());
+
   while (!greyObjects.empty()) {
     GCTracked *current = greyObjects.back();
     greyObjects.pop_back();
+    removed.insert(current);
     current->Scan();
-    current->Get()->Walk([&greyObjects](GCTracked *obj) {
-      if (obj->Color() == GCMark::Grey) {
+    current->Get()->Walk([&greyObjects, &removed](GCTracked *obj) {
+      if (obj->Color() == GCMark::Grey && !removed.contains(obj)) {
         greyObjects.push_back(obj);
       }
     });
@@ -173,10 +152,18 @@ void GCManager::CollectGarbage() {
 
 void GCManager::SetPhase(Phase phase) { phase_ = phase; }
 
-RetLock::RetLock(GCTracked *obj) : obj_(obj) {
-  GCManager::GetInstance().return_.insert(obj_);
+RetLock::RetLock(GCTracked *obj) : obj_({obj}) {
+  GCManager::GetInstance().return_.insert(obj);
 }
-RetLock::~RetLock() { GCManager::GetInstance().return_.erase(obj_); }
+
+void RetLock::Lock(GCTracked *obj) {
+  obj_.push_back(obj);
+  GCManager::GetInstance().return_.insert(obj);
+}
+RetLock::~RetLock() {
+  for (auto obj : obj_)
+    GCManager::GetInstance().return_.erase(obj);
+}
 
 GCTracked::GCTracked(GCMark mark) : mark_(mark) {}
 
@@ -198,8 +185,9 @@ void GCTracked::Walk(const std::function<void(GCTracked *)> &walker) {
 
 void GCTracked::Scan() {
   Walk([](GCTracked *obj) {
-    if (obj->Color() == GCMark::White)
+    if (obj->Color() == GCMark::White) {
       obj->Mark(GCMark::Grey);
+    }
   });
   mark_ = GCMark::Black;
 }
@@ -223,6 +211,14 @@ void GCTracked::PrintTo(std::ostream *out) const {
     *out << "()";
   else
     obj_ptr_->PrintTo(out);
+}
+
+std::string GCTracked::Serialize() const {
+  if (!obj_ptr_)
+    return "NIL";
+  std::stringstream ss;
+  obj_ptr_->PrintTo(&ss);
+  return ss.str();
 }
 
 Object *GCTracked::Get() const { return obj_ptr_; }

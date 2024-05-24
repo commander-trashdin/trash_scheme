@@ -2,9 +2,12 @@
 #include "cell.h"
 #include "gc.h"
 #include "interfaces.h"
+#include "lisperrors.h"
 #include "storage.h"
 #include "util.h"
 #include <cstddef>
+#include <utility>
+#include <variant>
 #include <vector>
 
 Function *Function::AllocIn(T *storage) { return &(storage->f_); }
@@ -21,16 +24,21 @@ std::optional<Types> Function::ArgType(size_t index) {
 Function::Function(std::string name,
                    std::variant<Types, std::vector<Types>> arg_types,
                    ApplyMethod &&apply_method)
-    : name(std::move(name)), arg_types_(arg_types), apply_method(apply_method) {
-}
+    : name(std::move(name)), arg_types_(std::move(arg_types)),
+      apply_method(apply_method) {}
 
 GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
+  auto lock = GCManager::GetInstance().Guard(args);
   std::vector<GCTracked *> result;
-  if (args->ID() == Types::null) // FIXME: This is incorrect!
-    return apply_method(scope, result);
+  if (args->ID() == Types::null) {
+    if (ArgType(0) && std::holds_alternative<std::vector<Types>>(arg_types_))
+      return Create<RuntimeError>("Too few arguments!");
+    else
+      return apply_method(scope, result);
+  }
   auto first = args;
   if (first->ID() != Types::cell)
-    throw std::runtime_error("Expected a list of arguments!");
+    return Create<RuntimeError>("Expected a list of arguments!");
 
   auto it = first->As<Cell>()->listbegin();
   auto end = first->As<Cell>()->listend();
@@ -38,15 +46,20 @@ GCTracked *Function::Apply(std::shared_ptr<Scope> &scope, GCTracked *args) {
   while (it != end) {
     auto this_arg_type = ArgType(index);
     if (!this_arg_type)
-      throw std::runtime_error("Too many arguments!");
+      return Create<RuntimeError>("Too many arguments!");
     auto arg = Eval(scope, {*it});
+    lock.Lock(arg);
+    CHECKERR(arg);
     if (SubtypeOf(*this_arg_type, arg->ID()))
       result.push_back(arg);
     else
-      throw std::runtime_error("Wrong argument type!");
+      return Create<RuntimeError>("Wrong argument type!");
     ++it;
     ++index;
   }
+  if (ArgType(index) && std::holds_alternative<std::vector<Types>>(arg_types_))
+    return Create<RuntimeError>("Too few arguments!");
+
   return apply_method(scope, result);
 }
 
@@ -61,28 +74,37 @@ LambdaFunction *LambdaFunction::AllocIn(T *storage) { return &(storage->lf_); }
 LambdaFunction::LambdaFunction(std::shared_ptr<Scope> scope,
                                std::vector<GCTracked *> &&args,
                                std::span<GCTracked *const> body)
-    : current_scope_(scope), args_(args), body_(body.begin(), body.end()) {}
+    : current_scope_(std::move(scope)), args_(args),
+      body_(body.begin(), body.end()) {}
 
 GCTracked *LambdaFunction::Apply(std::shared_ptr<Scope> &scope,
                                  GCTracked *args) {
-  if (args->ID() != Types::cell)
-    throw std::runtime_error("Expected a list of arguments!");
-  auto it = args->As<Cell>()->listbegin();
-  size_t index = 0;
-  while (it != args->As<Cell>()->listend()) {
-    if (index >= args_.size())
-      throw std::runtime_error("Too many arguments!");
-    std::vector<GCTracked *> v = {*it};
-    (*current_scope_)[args_[index]] = Eval(scope, v);
-    ++it;
-    ++index;
+  auto lock = GCManager::GetInstance().Guard(args);
+  if (args->ID() != Types::null) {
+    auto it = args->As<Cell>()->listbegin();
+    size_t index = 0;
+    while (it != args->As<Cell>()->listend()) {
+      if (index >= args_.size())
+        return Create<RuntimeError>("Too many arguments!");
+      std::vector<GCTracked *> v = {*it};
+      auto to_add = Eval(scope, v);
+      lock.Lock(to_add);
+      CHECKERR(to_add);
+      (*current_scope_)[args_[index]] = to_add;
+      ++it;
+      ++index;
+    }
+    if (index < args_.size())
+      return Create<RuntimeError>("Too few arguments!");
   }
 
   for (size_t ind = 0; ind < body_.size(); ++ind) {
     std::vector<GCTracked *> v = {body_[ind]};
-    if (ind != body_.size() - 1)
-      Eval(current_scope_, v);
-    else
+    if (ind != body_.size() - 1) {
+      auto _res = Eval(current_scope_, v);
+      lock.Lock(_res);
+      CHECKERR(_res);
+    } else
       return Eval(current_scope_, v);
   }
   return nullptr;

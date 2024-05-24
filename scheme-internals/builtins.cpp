@@ -1,5 +1,7 @@
 #include "builtins.h"
 #include "gc.h"
+#include "interfaces.h"
+#include "lisperrors.h"
 #include "parser.h"
 #include "util.h"
 #include <cstdint>
@@ -15,24 +17,29 @@ GCTracked *Eval(std::shared_ptr<Scope> &scope,
                 const std::vector<GCTracked *> &args) {
   auto arg = args[0];
   auto lock = GCManager::GetInstance().Guard(arg);
+
   if (arg->ID() == Types::symbol) {
     return scope->Lookup(arg).first;
   } else if (arg->ID() == Types::cell) {
     auto fn = arg->As<Cell>()->GetFirst();
     auto fn_args = arg->As<Cell>()->GetSecond();
+    if (fn_args->ID() != Types::cell && fn_args->ID() != Types::null)
+      return Create<SyntaxError>("Bad argument list");
+
     if (fn->ID() == Types::function)
       return fn->As<Function>()->Apply(scope, fn_args);
     if (fn->ID() == Types::specialform)
       return fn->As<SpecialForm>()->Apply(scope, fn_args);
     if (fn->ID() == Types::symbol) {
       auto [obj, _] = scope->Lookup(fn);
+      CHECKERR(obj);
       if (obj->ID() == Types::function)
         return obj->As<Function>()->Apply(scope, fn_args);
       if (obj->ID() == Types::specialform)
         return obj->As<SpecialForm>()->Apply(scope, fn_args);
-      throw RuntimeError("First argument must be a function");
+      return Create<RuntimeError>("First argument must be a function");
     }
-    throw RuntimeError("First argument must be a function");
+    return Create<RuntimeError>("First argument must be a function");
   } else {
     return arg;
   }
@@ -42,6 +49,7 @@ GCTracked *If(std::shared_ptr<Scope> &scope,
               const std::vector<GCTracked *> &args) {
 
   auto result = Eval(scope, {args[0]});
+  CHECKERR(result);
   if (result && !result->IsFalse())
     return Eval(scope, {args[1]});
   else
@@ -52,6 +60,7 @@ GCTracked *And(std::shared_ptr<Scope> &scope,
                const std::vector<GCTracked *> &args) {
   for (size_t ind = 0; ind < args.size(); ++ind) {
     auto res = Eval(scope, {args[ind]});
+    CHECKERR(res);
     if (res->IsFalse())
       return Create<Boolean>(false);
     if (ind == args.size() - 1)
@@ -62,8 +71,9 @@ GCTracked *And(std::shared_ptr<Scope> &scope,
 
 GCTracked *Or(std::shared_ptr<Scope> &scope,
               const std::vector<GCTracked *> &args) {
-  for (size_t ind = 0; ind < args.size(); ++ind) {
-    auto res = Eval(scope, {args[ind]});
+  for (auto arg : args) {
+    auto res = Eval(scope, {arg});
+    CHECKERR(res);
     if (!res->IsFalse())
       return res;
   }
@@ -74,23 +84,25 @@ GCTracked *Define(std::shared_ptr<Scope> &scope,
                   const std::vector<GCTracked *> &args) {
   auto fst = args[0];
   if (fst->ID() == Types::symbol) {
-    (*scope)[fst] = Eval(scope, {args[1]});
+    auto res = Eval(scope, {args[1]});
+    CHECKERR(res);
+    (*scope)[fst] = res;
   } else if (fst->ID() == Types::cell) {
     auto lambda_args_cell = fst->As<Cell>()->GetSecond();
     if (lambda_args_cell->ID() != Types::cell)
-      throw SyntaxError("wrong argument list");
+      return Create<SyntaxError>("wrong argument list");
     std::vector<GCTracked *> lambda_args;
     for (auto it = lambda_args_cell->As<Cell>()->listbegin();
          it != lambda_args_cell->As<Cell>()->listend(); ++it) {
       if ((*it)->ID() != Types::symbol)
-        throw SyntaxError("wrong argument name");
+        return Create<SyntaxError>("wrong argument name");
       lambda_args.push_back(*it);
     }
     (*scope)[fst->As<Cell>()->GetFirst()] = Create<LambdaFunction>(
         scope, std::move(lambda_args),
         std::span<GCTracked *const>(args.begin() + 1, args.end()));
   } else {
-    throw SyntaxError("wrong argument list");
+    return Create<SyntaxError>("wrong argument list");
   }
   return Create<>();
 }
@@ -99,26 +111,38 @@ GCTracked *Set(std::shared_ptr<Scope> &scope,
                const std::vector<GCTracked *> &args) {
   auto var = args[0];
   if (var->ID() == Types::symbol) {
-    auto [_, actual_scope] = scope->Lookup(var);
+    auto [_var, actual_scope] = scope->Lookup(var);
+    CHECKERR(_var);
     std::vector<GCTracked *> v = {args[1]};
-    (*actual_scope)[var] = Eval(scope, v);
+    auto res = Eval(scope, v);
+    CHECKERR(res);
+    (*actual_scope)[var] = res;
   } else {
-    throw RuntimeError("Trying to set something that is not a variable");
+    return Create<SyntaxError>(
+        "Trying to set something that is not a variable");
   }
-  return nullptr;
+  return Create<>();
+}
+
+GCTracked *PrintDebug(std::shared_ptr<Scope> &scope,
+                      const std::vector<GCTracked *> &args) {
+  auto res = Eval(scope, {args[0]});
+  res->PrintTo(&std::cout);
+  std::cout << std::endl;
+  return Create<>();
 }
 
 GCTracked *Lambda(std::shared_ptr<Scope> &scope,
                   const std::vector<GCTracked *> &args) {
   if (args[0]->ID() != Types::cell)
-    throw SyntaxError("Bad argument list!");
+    return Create<SyntaxError>("Bad argument list!");
 
   auto lambda_args_cell = args[0]->As<Cell>();
   std::vector<GCTracked *> lambda_args;
   for (auto it = lambda_args_cell->listbegin();
        it != lambda_args_cell->listend(); ++it) {
     if ((*it)->ID() != Types::symbol)
-      throw SyntaxError("wrong argument name");
+      return Create<SyntaxError>("wrong argument name");
     lambda_args.push_back(*it);
   }
   auto fn = Create<LambdaFunction>(
@@ -325,12 +349,12 @@ GCTracked *ListRef(std::shared_ptr<Scope> &,
   auto value = args[1]->As<Number>()->GetValue();
   while (value != 0) {
     if (scope->ID() != Types::cell)
-      throw RuntimeError("List is too short");
+      return Create<RuntimeError>("List is too short");
     scope = scope->As<Cell>()->GetSecond();
     --value;
   }
   if (scope->ID() != Types::cell)
-    throw RuntimeError("List is too short");
+    return Create<RuntimeError>("List is too short");
 
   return scope->As<Cell>()->GetFirst();
 }
@@ -340,7 +364,7 @@ GCTracked *ListTail(std::shared_ptr<Scope> &,
   auto scope = args[0];
   while (true) {
     if (scope->ID() != Types::cell)
-      throw RuntimeError("Not a proper list");
+      return Create<RuntimeError>("Not a proper list");
     auto cell = scope->As<Cell>();
     if (cell->GetSecond()->ID() == Types::null)
       return scope;
@@ -356,10 +380,10 @@ GCTracked *Map(std::shared_ptr<Scope> &, const std::vector<GCTracked *> &args) {
   auto source = args[1]->As<Cell>();
   auto fn = args[0]->As<Function>();
   while (true) {
-    if (source->GetSecond()->ID() != Types::cell)
-      throw RuntimeError("Syntax error!");
     std::shared_ptr<Scope> nullscope = nullptr;
-    auto result = fn->Apply(nullscope, source->GetFirst());
+    auto arg_list = Create<Cell>(source->GetFirst(), Create<>());
+    auto result = fn->Apply(nullscope, arg_list);
+    CHECKERR(result);
     new_cell->As<Cell>()->SetFirst(result);
     if (source->GetSecond()->ID() == Types::cell) {
       source = source->GetSecond()->As<Cell>();
@@ -368,7 +392,7 @@ GCTracked *Map(std::shared_ptr<Scope> &, const std::vector<GCTracked *> &args) {
     } else if (source->GetSecond()->ID() == Types::null) {
       break;
     } else {
-      throw RuntimeError("Syntax error!");
+      return Create<RuntimeError>("Improper list cannot be mapped over!");
     }
   }
   return res;
@@ -376,25 +400,30 @@ GCTracked *Map(std::shared_ptr<Scope> &, const std::vector<GCTracked *> &args) {
 
 GCTracked *Exit(std::shared_ptr<Scope> &,
                 const std::vector<GCTracked *> &args) {
-  return Create<BuiltInObject>();
+  throw ControlTransfer();
 }
 
 GCTracked *Load(std::shared_ptr<Scope> &scope,
                 const std::vector<GCTracked *> &args) {
   auto filename = args[0]->As<String>()->GetValue();
   if (!hasCorrectExtension(filename)) {
-    throw RuntimeError("Wrong file extension");
+    return Create<RuntimeError>("Wrong file extension");
   }
   std::ifstream filestream(filename);
-  Parser parser((Tokenizer(&filestream)));
   auto global_scope = scope->GetGlobalScope();
-  GCManager::GetInstance().SetPhase(Phase::Read);
-  while (auto obj = parser.Read()) {
-    GCManager::GetInstance().SetPhase(Phase::Eval);
-    Eval(global_scope, {obj});
+  GCTracked *res = nullptr;
+  while (true) {
+    Parser parser((Tokenizer(&filestream)));
     GCManager::GetInstance().SetPhase(Phase::Read);
+    auto obj = parser.Read();
+    if (obj == nullptr)
+      break;
+    CHECKERR(obj);
+    GCManager::GetInstance().SetPhase(Phase::Eval);
+    res = Eval(global_scope, {obj});
+    CHECKERR(res);
   }
-  return Create<>();
+  return res;
 }
 
 GCTracked *Print(std::shared_ptr<Scope> &,
@@ -410,7 +439,7 @@ GCTracked *Read(std::shared_ptr<Scope> &scope,
   GCManager::GetInstance().SetPhase(Phase::Read);
   auto obj = parser.Read();
   if (obj == nullptr)
-    throw RuntimeError("Read error");
+    return Create<RuntimeError>("Read error");
   GCManager::GetInstance().SetPhase(Phase::Eval);
   return obj;
 }

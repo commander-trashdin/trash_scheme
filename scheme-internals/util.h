@@ -6,14 +6,11 @@ static const std::string tSchemeExtension = ".trash";
 
 bool hasCorrectExtension(const std::string &filename);
 
-struct SyntaxError : public std::runtime_error {
-  explicit SyntaxError(const std::string &what);
-};
+#define CHECKERR(result)                                                       \
+  if (SubtypeOf(Types::error, result->ID()))                                   \
+    return result;
 
-struct RuntimeError : public std::runtime_error {
-  explicit RuntimeError(const std::string &what);
-};
-
-struct NameError : public std::runtime_error {
-  explicit NameError(const std::string &what);
+class ControlTransfer : public std::exception {
+public:
+  [[nodiscard]] const char *what() const noexcept override { return "Exit"; }
 };

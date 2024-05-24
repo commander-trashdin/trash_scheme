@@ -102,7 +102,8 @@ public:
         return Step();
       } else if (std::isspace(cur_) && !accum_token.empty()) {
         return RecordLongToken(std::move(accum_token));
-      } else if (isalnum(cur_) || Matches(cur_, '?', '!', '#', '>', '<', '=')) {
+      } else if (isalnum(cur_) ||
+                 Matches(cur_, '?', '!', '#', '>', '<', '=', '_', '%')) {
         accum_token.push_back(cur_);
       } else if (Matches(cur_, '+', '-')) {
         if (accum_token.empty() && !isdigit(Peek())) {

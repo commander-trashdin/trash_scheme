@@ -1,8 +1,7 @@
 # Add library for scheme internals
 add_library(scheme_internals 
-builtinobj.cpp  builtins.cpp  cell.cpp  function.h    number.cpp  objects.h  scope.h          specialform.h  symbol.cpp  util.cpp
-builtinobj.h    builtins.h    cell.h    function.cpp    interfaces.h  number.h    scope.cpp  specialform.cpp  storage.h      symbol.h    util.h
-lispstring.cpp  lispstring.h
+builtins.cpp  cell.cpp  function.h    lisperrors.cpp  lispstring.cpp  number.cpp  objects.h  scope.h          specialform.h  symbol.cpp  util.cpp
+builtins.h    cell.h    function.cpp    interfaces.h  lisperrors.h    lispstring.h    number.h    scope.cpp  specialform.cpp  storage.h      symbol.h    util.h
 )
 
 # Include directories and link dependencies

@@ -1,4 +1,5 @@
 #pragma once
+#include "lisperrors.h"
 #include "objects.h"
 
 union T {
@@ -9,8 +10,9 @@ union T {
   LambdaFunction lf_;
   Cell c_;
   SpecialForm sf_;
-  BuiltInObject bio_;
   String str_;
+  RuntimeError re_;
+  SyntaxError se_;
 
   T() {}
   ~T() {}

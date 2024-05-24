@@ -5,17 +5,25 @@
 #include "parser.h"
 #include "symbol.h"
 #include "tokenizer.h"
+#include "util.h"
+#include <fstream>
 #include <istream>
 #include <memory>
 #include <vector>
 
 SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
+  RegisterSF("and", And);
+  RegisterSF("or", Or);
+  RegisterSF("lambda", Lambda);
+  RegisterSF("define", Define, 2, 2);
+  RegisterSF("set!", Set, 2, 2);
+  RegisterSF("if", If, 2, 3);
+  RegisterSF("quote", Quote, 1, 1);
+  RegisterSF("print-debug", PrintDebug, 1, 1);
   RegisterGlobalFn("+", Types::number, Plus);
   RegisterGlobalFn("-", Types::number, Minus);
   RegisterGlobalFn("*", Types::number, Multiply);
   RegisterGlobalFn("/", Types::number, Divide);
-  RegisterSF("if", If, 2, 3);
-  RegisterSF("quote", Quote, 1, 1);
   std::vector<Types> v = {Types::t};
   RegisterGlobalFn("null?", v, CheckNull);
   RegisterGlobalFn("pair?", v, CheckPair);
@@ -47,17 +55,12 @@ SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
   v = {Types::cell, Types::number};
   RegisterGlobalFn("list-ref", v, ListRef);
   RegisterGlobalFn("list-tail", Types::cell, ListRef);
-  RegisterSF("and", And);
-  RegisterSF("or", Or);
-  RegisterSF("lambda", Lambda);
-  RegisterSF("define", Define, 2, 2);
-  RegisterSF("set!", Set, 2, 2);
   v = {Types::t};
   RegisterGlobalFn("eval", v, ::Eval);
   v = {Types::function, Types::cell};
   RegisterGlobalFn("map", v, Map);
   v = {Types::string};
-  RegisterGlobalFn("load", v, Load);
+  RegisterGlobalFn("load", v, ::Load);
   v = {Types::t};
   RegisterGlobalFn("print", v, Print);
   v.clear();
@@ -68,7 +71,7 @@ SchemeInterpreter::SchemeInterpreter() : global_scope_(Scope::Create()) {
 SchemeInterpreter::~SchemeInterpreter() { global_scope_->Clear(); }
 
 void SchemeInterpreter::RegisterGlobalFn(
-    const std::string name, std::variant<Types, std::vector<Types>> arg_types,
+    std::string name, std::variant<Types, std::vector<Types>> arg_types,
     GCTracked *(*fn)(std::shared_ptr<Scope> &,
                      const std::vector<GCTracked *> &)) {
   auto func = Create<Function>(name, arg_types, std::move(fn));
@@ -76,7 +79,7 @@ void SchemeInterpreter::RegisterGlobalFn(
 }
 
 void SchemeInterpreter::RegisterSF(
-    const std::string name,
+    std::string name,
     GCTracked *(*sf)(std::shared_ptr<Scope> &,
                      const std::vector<GCTracked *> &),
     std::optional<size_t> arg_min, std::optional<size_t> arg_max) {
@@ -96,19 +99,28 @@ inline std::string Print(const Object *obj) {
   return ss.str();
 }
 
-void SchemeInterpreter::REPL(std::istream *in) {
-  Parser parser((Tokenizer(in)));
+void SchemeInterpreter::Load(const std::string &filename) {
+  if (!hasCorrectExtension(filename))
+    throw std::runtime_error("Invalid file extension");
+  std::ifstream filestream(filename);
+  if (!filestream.is_open())
+    throw std::runtime_error("Failed to open file");
+  GCTracked *res = nullptr;
   while (true) {
-    std::cout << "> ";
-    std::cout.flush();
+    Parser parser((Tokenizer(&filestream)));
     GCManager::GetInstance().SetPhase(Phase::Read);
     auto obj = parser.Read();
-    GCManager::GetInstance().SetPhase(Phase::Eval);
-    auto res = Eval(obj);
-    if (res->ID() == Types::builtin)
+    if (obj == nullptr)
       break;
-    res->PrintTo(&std::cout);
-
-    std::cout << "\n";
+    if (SubtypeOf(Types::error, obj->ID())) {
+      obj->PrintTo(&std::cerr);
+      break;
+    }
+    GCManager::GetInstance().SetPhase(Phase::Eval); // insert try catch here
+    res = ::Eval(global_scope_, {obj});
+    if (SubtypeOf(Types::error, res->ID())) {
+      res->PrintTo(&std::cerr);
+      break;
+    }
   }
 }

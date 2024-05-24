@@ -25,7 +25,7 @@ public:
   GCTracked *ReadProper();
 
 private:
-  void ParenClose();
+  GCTracked *ParenClose();
   void ParenOpen();
   Tokenizer tokenizer_;
   int64_t paren_count_ = 0;

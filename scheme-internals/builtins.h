@@ -4,6 +4,9 @@
 GCTracked *Quote(std::shared_ptr<Scope> &scope,
                  const std::vector<GCTracked *> &args);
 
+GCTracked *PrintDebug(std::shared_ptr<Scope> &scope,
+                      const std::vector<GCTracked *> &args);
+
 GCTracked *If(std::shared_ptr<Scope> &scope,
               const std::vector<GCTracked *> &args);
 

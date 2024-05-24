@@ -1,15 +1,18 @@
 #include "parser.h"
 #include "gc.h"
+#include "interfaces.h"
 #include "tokenizer.h"
 #include "util.h"
 #include <variant>
 
 Parser::Parser(Tokenizer &&tok) : tokenizer_(tok) {}
 
-void Parser::ParenClose() {
+GCTracked *Parser::ParenClose() {
   paren_count_--;
   if (paren_count_ < 0)
-    throw SyntaxError("Unexpected closing parentheses!");
+    return Create<SyntaxError>("Unexpected closing parentheses!");
+
+  return nullptr;
 }
 void Parser::ParenOpen() { paren_count_++; }
 
@@ -35,26 +38,31 @@ GCTracked *Parser::ReadProper() {
       auto new_cell = Create<Cell>();
       auto list = Create<Cell>();
       new_cell->As<Cell>()->SetFirst(Create<Symbol>("quote"));
-      list->As<Cell>()->SetFirst(ReadProper());
+      auto fst = ReadProper();
+      if (SubtypeOf(Types::error, fst->ID()))
+        return fst;
+      list->As<Cell>()->SetFirst(fst);
       new_cell->As<Cell>()->SetSecond(list);
       return new_cell;
     } else if (syntax == SyntaxToken::Dot) {
-      throw SyntaxError("Unexpected symbol");
+      return Create<SyntaxError>("Unexpected symbol");
     } else {
-      if (syntax == SyntaxToken::ParenClose)
-        ParenClose();
-      else
+      if (syntax == SyntaxToken::ParenClose) {
+        auto error = ParenClose();
+        if (error)
+          return error;
+      } else
         ParenOpen();
       return ReadList();
     }
   }
-  throw SyntaxError("Unexpected symbol");
+  return Create<SyntaxError>("Unexpected symbol");
 }
 
 GCTracked *Parser::ReadList() {
   tokenizer_.Next();
   if (tokenizer_.IsEnd())
-    throw SyntaxError("Input not complete");
+    return Create<SyntaxError>("Input not complete");
 
   GCTracked *head = nullptr;
   GCTracked *tail = nullptr;
@@ -63,25 +71,32 @@ GCTracked *Parser::ReadList() {
     if (auto syntax = std::get_if<SyntaxToken>(&current_token);
         syntax != nullptr) {
       if (*syntax == SyntaxToken::ParenClose) {
-        ParenClose();
+        auto error = ParenClose();
+        if (error)
+          return error;
         if (paren_count_ != 0)
           tokenizer_.Next();
         return head;
       } else if (*syntax == SyntaxToken::Dot) {
         tokenizer_.Next();
         if (tail == nullptr)
-          throw SyntaxError("Improper list syntax");
+          return Create<SyntaxError>("Improper list syntax");
 
-        tail->As<Cell>()->SetSecond(ReadProper());
+        auto second = ReadProper();
+        if (SubtypeOf(Types::error, second->ID()))
+          return second;
+        tail->As<Cell>()->SetSecond(second);
         tokenizer_.Next();
         if (auto syntax = std::get_if<SyntaxToken>(&current_token);
             !(syntax && *syntax == SyntaxToken::ParenClose))
-          throw SyntaxError("Improper list syntax");
+          return Create<SyntaxError>("Improper list syntax");
 
         continue;
       }
     }
     auto current_object = ReadProper();
+    if (SubtypeOf(Types::error, current_object->ID()))
+      return current_object;
     if (current_object->ID() != Types::cell) // Kinda hacky
       tokenizer_.Next();
     auto new_cell = Create<Cell>();
@@ -92,7 +107,6 @@ GCTracked *Parser::ReadList() {
       tail->As<Cell>()->SetSecond(new_cell);
     tail = new_cell;
   }
-  throw SyntaxError("Unmatched opening parentheses");
 }
 
 GCTracked *Parser::Read() {

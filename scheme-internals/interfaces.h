@@ -1,5 +1,4 @@
 #pragma once
-#include "string.h"
 #include <algorithm>
 #include <concepts>
 #include <cstdint>
@@ -25,6 +24,9 @@ enum class Types {
   string,
   function,
   specialform,
+  error,
+  syntaxerror,
+  runtimeerror,
   builtin
 };
 
@@ -33,7 +35,7 @@ inline bool SubtypeOf(const Types fst, const Types snd) {
       {Types::t,
        {Types::t, Types::cell, Types::null, Types::number, Types::symbol,
         Types::boolean, Types::function, Types::specialform, Types::builtin,
-        Types::string}},
+        Types::string, Types::error, Types::syntaxerror, Types::runtimeerror}},
       {Types::cell, {Types::cell}},
       {Types::null, {Types::null}},
       {Types::number, {Types::number}},
@@ -42,7 +44,11 @@ inline bool SubtypeOf(const Types fst, const Types snd) {
       {Types::function, {Types::function}},
       {Types::specialform, {Types::specialform}},
       {Types::builtin, {Types::builtin}},
-      {Types::string, {Types::string}}};
+      {Types::string, {Types::string}},
+      {Types::error, {Types::error, Types::syntaxerror, Types::runtimeerror}},
+      {Types::syntaxerror, {Types::syntaxerror}},
+      {Types::runtimeerror, {Types::runtimeerror}}};
+
   return std::find(map[fst].begin(), map[fst].end(), snd) != map[fst].end();
 }
 
@@ -58,6 +64,9 @@ class String;
 class LambdaFunction;
 class Cell;
 class SpecialForm;
+class LispError;
+class RuntimeError;
+class SyntaxError;
 class GCTracked;
 
 union T;
@@ -93,9 +102,9 @@ class Object {
 public:
   virtual ~Object() {}
 
-  virtual Types ID() const { return Types::t; }
+  [[nodiscard]] virtual Types ID() const { return Types::t; }
 
-  virtual bool IsFalse() const { return false; }
+  [[nodiscard]] virtual bool IsFalse() const { return false; }
 
   virtual void PrintTo(std::ostream *out) const = 0;
 

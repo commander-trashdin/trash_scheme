@@ -1,5 +1,11 @@
 #pragma once
+
+#include <vector>
+#ifndef MY_TEMPLATE_H
+#define MY_TEMPLATE_H
+
 #include "interfaces.h"
+#include "number.h"
 #include "storage.h"
 #include <functional>
 #include <memory>
@@ -20,19 +26,19 @@ class RetLock {
 
 public:
   ~RetLock();
+  void Lock(GCTracked *obj);
 
 private:
   RetLock(GCTracked *obj);
 
-  GCTracked *obj_;
+  std::vector<GCTracked *> obj_;
 };
 
 GCTracked *GetBool(bool kind);
 GCTracked *GetNil();
-// template <NumberOrSymbol T> GCTracked *GetConstant(typename T::ValueType
-// &val);
-GCTracked *GetConstant(int64_t val);
-GCTracked *GetConstant(const std::string &val);
+
+template <DerivedFromObject Derived>
+GCTracked *GetConstant(typename Derived::ValueType &val);
 
 void RegisterObject(GCTracked *obj);
 
@@ -51,7 +57,7 @@ public:
   void Scan();
 
   void Walk(const std::function<void(GCTracked *)> &walker);
-  GCMark Color() const;
+  [[nodiscard]] GCMark Color() const;
 
   template <DerivedFromObject Derived> Derived *As() {
     return static_cast<Derived *>(obj_ptr_);
@@ -59,9 +65,11 @@ public:
 
   void PrintTo(std::ostream *out) const;
 
-  Types ID() const;
+  [[nodiscard]] std::string Serialize() const;
 
-  bool IsFalse() const;
+  [[nodiscard]] Types ID() const;
+
+  [[nodiscard]] bool IsFalse() const;
 
   bool operator==(const GCTracked &other) const;
 
@@ -73,7 +81,7 @@ public:
     } else if constexpr (std::is_same_v<Derived, Boolean>) {
       return GetBool(std::forward<Args>(args)...);
     } else if constexpr (std::is_same_v<Tag, constant>) {
-      return GetConstant(std::forward<Args>(args)...);
+      return GetConstant<Derived>(std::forward<Args>(args)...);
     } else {
       auto wrapped_obj = new GCTracked();
       auto to_store = Derived::AllocIn(&wrapped_obj->storage_);
@@ -85,11 +93,11 @@ public:
   }
 
   ~GCTracked();
-  friend GCTracked *GetConstant(int64_t val);
-  friend GCTracked *GetConstant(const std::string &val);
+  template <DerivedFromObject Derived>
+  friend GCTracked *GetConstant(typename Derived::ValueType &val);
 
 private:
-  Object *Get() const;
+  [[nodiscard]] Object *Get() const;
   T storage_;
   Object *obj_ptr_ = nullptr;
   GCMark mark_;
@@ -111,7 +119,21 @@ public:
 
   std::unordered_map<std::string, GCTracked *> *GetSymReg();
 
-  template <NumberOrSymbol T> GCTracked *GetConstant(typename T::ValueType val);
+  std::unordered_map<std::string, GCTracked *> *GetErrorReg();
+
+  template <DerivedFromObject Dervied>
+  std::unordered_map<typename Dervied::ValueType, GCTracked *> *
+  GetConstantRegistry() {
+    if constexpr (std::is_same_v<Dervied, Number>)
+      return &constant_numbers_;
+    else if constexpr (std::is_same_v<Dervied, Symbol>)
+      return &constant_symbols_;
+    else if constexpr (std::is_same_v<Dervied, RuntimeError>)
+      return &errors_;
+    else
+      static_assert(sizeof(Dervied) == 0, "Invalid type");
+    return nullptr;
+  }
 
   void AddRoot(const std::shared_ptr<Scope> &scope);
 
@@ -127,6 +149,9 @@ public:
 
   void SetPhase(Phase phase);
 
+  GCManager(const GCManager &) = delete;
+  GCManager &operator=(const GCManager &) = delete;
+
 private:
   Phase phase_ = Phase::Read;
   std::unordered_set<GCTracked *> objects_;
@@ -136,11 +161,12 @@ private:
   size_t currentMemoryUsage_ = 0;
   std::unordered_map<int64_t, GCTracked *> constant_numbers_;
   std::unordered_map<std::string, GCTracked *> constant_symbols_;
+  std::unordered_map<std::string, GCTracked *> errors_;
   std::pair<GCTracked *, GCTracked *> bools_;
   GCTracked *nil_;
-
   GCManager();
   ~GCManager();
-  GCManager(const GCManager &) = delete;
-  GCManager &operator=(const GCManager &) = delete;
 };
+
+#include "getconst.h"
+#endif // MY_TEMPLATE_H
