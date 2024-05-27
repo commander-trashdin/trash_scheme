@@ -1,0 +1,14 @@
+(define (reduce f ls init)
+  (map (lambda (x) (set! init (f init x))) ls)
+  init)
+
+
+(define (%loop f ls)
+  (set-cdr! ls ls)
+  (map f ls))
+
+(define (loop f)
+  (%loop f (cons 0 0)))
+
+
+(loop (lambda (_______%innerloopvariable) (print-debug (eval (read)))))

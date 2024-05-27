@@ -117,9 +117,9 @@ void SchemeInterpreter::Load(const std::string &filename) {
       break;
     }
     GCManager::GetInstance().SetPhase(Phase::Eval); // insert try catch here
-    res = ::Eval(global_scope_, {obj});
-    if (SubtypeOf(Types::error, res->ID())) {
-      res->PrintTo(&std::cerr);
+    try {
+      res = ::Eval(global_scope_, {obj});
+    } catch (const ControlTransfer &) {
       break;
     }
   }
